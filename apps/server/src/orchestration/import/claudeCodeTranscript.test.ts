@@ -297,6 +297,40 @@ describe("parseTranscript", () => {
     expect(parsed.title).toBe("Curated title");
   });
 
+  it("keeps real prompts regardless of promptSource (sdk-driven sessions are real work)", () => {
+    clock = 0;
+    const doc = jsonl([
+      // Real human prompt, but the session is SDK-driven so promptSource is "sdk".
+      userString("u1", null, "Build the importer feature", "sdk"),
+      assistant("a1", "u1", [{ type: "text", text: "on it" }]),
+    ]);
+    const parsed = parseTranscript(doc);
+    expect(parsed.firstUserPrompt).toBe("Build the importer feature");
+    expect(parsed.title).toBe("Build the importer feature");
+  });
+
+  it("drops isMeta-injected user lines (e.g. Stop-hook output) from body and title", () => {
+    clock = 0;
+    const doc = jsonl([
+      {
+        ...BASE,
+        type: "user",
+        uuid: "m1",
+        parentUuid: null,
+        timestamp: ts(),
+        isMeta: true,
+        message: { role: "user", content: "An injected hook note, not real conversation" },
+      },
+      userString("u1", "m1", "Real first prompt", "typed"),
+      assistant("a1", "u1", [{ type: "text", text: "ok" }]),
+    ]);
+    const parsed = parseTranscript(doc);
+    expect(parsed.firstUserPrompt).toBe("Real first prompt");
+    expect(
+      parsed.items.filter((i) => i.kind === "user-message").map((i) => ("text" in i ? i.text : "")),
+    ).toEqual(["Real first prompt"]);
+  });
+
   it("tolerates blank and corrupt lines", () => {
     clock = 0;
     const doc = [
