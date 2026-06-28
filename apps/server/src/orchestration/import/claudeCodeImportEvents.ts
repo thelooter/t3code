@@ -182,7 +182,15 @@ export function buildImportEvents(input: BuildImportEventsInput): ImportEvent[] 
         tone: item.isError ? "error" : "tool",
         kind: item.isError ? "tool.failed" : "tool.completed",
         summary: toolSummary(item),
-        payload: { name: item.name, input: item.input, result, isError: item.isError },
+        // `source` lets the web timeline recognize an imported tool call and
+        // build its expandable body (input + result) from this flat payload.
+        payload: {
+          source: importSource,
+          name: item.name,
+          input: item.input,
+          result,
+          isError: item.isError,
+        },
         turnId: null,
         sequence,
         createdAt: item.createdAt,
