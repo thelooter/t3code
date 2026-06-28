@@ -32,9 +32,66 @@ export const ClaudeCodeDiscoverResult = Schema.Struct({
 });
 export type ClaudeCodeDiscoverResult = typeof ClaudeCodeDiscoverResult.Type;
 
-export const ClaudeCodeImportInput = Schema.Struct({
-  /** Absolute transcript paths to import (from a prior discover call). */
+// --- Plan (preview) ---------------------------------------------------------
+// Import is a two-step flow: `planImport` previews how the selected sessions map
+// to projects (matched existing ones + proposed new ones, all editable), then
+// `import` applies the user-confirmed mapping.
+
+export const ClaudeCodeImportPlanInput = Schema.Struct({
+  /** Absolute transcript paths to plan (from a prior discover call). */
   filePaths: Schema.Array(Schema.String),
+});
+export type ClaudeCodeImportPlanInput = typeof ClaudeCodeImportPlanInput.Type;
+
+/** A target project in the plan: either an existing match or a proposed new one. */
+export const ClaudeCodeImportPlanProject = Schema.Struct({
+  projectId: ProjectId,
+  title: Schema.String,
+  workspaceRoot: Schema.String,
+  /** True = an existing project matched by workspaceRoot; false = will be created. */
+  isExisting: Schema.Boolean,
+  sessionCount: NonNegativeInt,
+});
+export type ClaudeCodeImportPlanProject = typeof ClaudeCodeImportPlanProject.Type;
+
+export const ClaudeCodeImportPlanSession = Schema.Struct({
+  filePath: Schema.String,
+  sessionId: Schema.String,
+  title: Schema.NullOr(Schema.String),
+  cwd: Schema.NullOr(Schema.String),
+  messageCount: NonNegativeInt,
+  /** Target project; references a `ClaudeCodeImportPlanProject.projectId`. */
+  projectId: ProjectId,
+});
+export type ClaudeCodeImportPlanSession = typeof ClaudeCodeImportPlanSession.Type;
+
+export const ClaudeCodeImportPlan = Schema.Struct({
+  projects: Schema.Array(ClaudeCodeImportPlanProject),
+  sessions: Schema.Array(ClaudeCodeImportPlanSession),
+});
+export type ClaudeCodeImportPlan = typeof ClaudeCodeImportPlan.Type;
+
+// --- Apply (the user-confirmed mapping) -------------------------------------
+
+/** A target project to import into; `isExisting: false` ones are created on apply. */
+export const ClaudeCodeImportTargetProject = Schema.Struct({
+  projectId: ProjectId,
+  title: TrimmedNonEmptyString,
+  workspaceRoot: Schema.String,
+  isExisting: Schema.Boolean,
+});
+export type ClaudeCodeImportTargetProject = typeof ClaudeCodeImportTargetProject.Type;
+
+export const ClaudeCodeImportSessionAssignment = Schema.Struct({
+  filePath: Schema.String,
+  /** Target project; references a `ClaudeCodeImportTargetProject.projectId`. */
+  projectId: ProjectId,
+});
+export type ClaudeCodeImportSessionAssignment = typeof ClaudeCodeImportSessionAssignment.Type;
+
+export const ClaudeCodeImportInput = Schema.Struct({
+  projects: Schema.Array(ClaudeCodeImportTargetProject),
+  sessions: Schema.Array(ClaudeCodeImportSessionAssignment),
 });
 export type ClaudeCodeImportInput = typeof ClaudeCodeImportInput.Type;
 

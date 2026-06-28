@@ -62,6 +62,8 @@ import {
   ClaudeCodeDiscoverResult,
   ClaudeCodeImportError,
   ClaudeCodeImportInput,
+  ClaudeCodeImportPlan,
+  ClaudeCodeImportPlanInput,
   ClaudeCodeImportResult,
 } from "./claudeCodeImport.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
@@ -216,6 +218,7 @@ export const WS_METHODS = {
   serverUpdateSettings: "server.updateSettings",
   serverDiscoverSourceControl: "server.discoverSourceControl",
   claudeCodeDiscover: "claudeCode.discover",
+  claudeCodePlanImport: "claudeCode.planImport",
   claudeCodeImport: "claudeCode.import",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
@@ -301,6 +304,12 @@ export const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscov
 export const WsClaudeCodeDiscoverRpc = Rpc.make(WS_METHODS.claudeCodeDiscover, {
   payload: Schema.Struct({}),
   success: ClaudeCodeDiscoverResult,
+  error: Schema.Union([ClaudeCodeImportError, EnvironmentAuthorizationError]),
+});
+
+export const WsClaudeCodePlanImportRpc = Rpc.make(WS_METHODS.claudeCodePlanImport, {
+  payload: ClaudeCodeImportPlanInput,
+  success: ClaudeCodeImportPlan,
   error: Schema.Union([ClaudeCodeImportError, EnvironmentAuthorizationError]),
 });
 
@@ -771,5 +780,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
   WsClaudeCodeDiscoverRpc,
+  WsClaudeCodePlanImportRpc,
   WsClaudeCodeImportRpc,
 );

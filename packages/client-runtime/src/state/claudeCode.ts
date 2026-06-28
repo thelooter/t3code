@@ -21,6 +21,14 @@ export function createClaudeCodeEnvironmentAtoms<R, E>(
       tag: WS_METHODS.claudeCodeDiscover,
       staleTimeMs: 60_000,
     }),
+    planImport: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:claude-code:plan-import",
+      tag: WS_METHODS.claudeCodePlanImport,
+      concurrency: {
+        mode: "serial",
+        key: ({ environmentId }) => environmentId,
+      },
+    }),
     importSessions: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:claude-code:import",
       tag: WS_METHODS.claudeCodeImport,

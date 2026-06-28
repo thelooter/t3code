@@ -1,17 +1,25 @@
 /**
  * Discovers and imports Claude Code conversation transcripts.
  *
- * Discovery scans `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`. Import
- * parses each selected transcript, resolves (or creates) a project for its cwd,
- * and synthesizes historical orchestration events that are appended through the
- * engine — so the import replays cleanly on a read-model rebuild. Imported
- * threads are marked read-only / non-resumable via `importedSource`.
+ * Discovery scans `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`. Import is
+ * a two-step flow: `planImport` previews how the selected sessions map to
+ * projects (existing matches by cwd + proposed new projects), then `importSessions`
+ * applies the user-confirmed mapping — creating any new projects (with edited
+ * titles) and synthesizing historical orchestration events appended through the
+ * engine, so the import replays cleanly on a read-model rebuild. Imported threads
+ * are marked read-only / non-resumable via `importedSource`.
  */
 import {
   type ClaudeCodeDiscoverResult,
   ClaudeCodeImportError,
   type ClaudeCodeImportInput,
+  type ClaudeCodeImportPlan,
+  type ClaudeCodeImportPlanInput,
+  type ClaudeCodeImportPlanProject,
+  type ClaudeCodeImportPlanSession,
   type ClaudeCodeImportResult,
+  type ClaudeCodeImportSessionAssignment,
+  type ClaudeCodeImportTargetProject,
   type ClaudeCodeImportedThread,
   type ClaudeCodeSessionSummary,
   type ModelSelection,
@@ -34,12 +42,17 @@ import { parseTranscript, summarizeTranscript } from "./claudeCodeTranscript.ts"
 const IMPORT_SOURCE = "claude-code";
 const DEFAULT_MODEL = "claude-opus-4-8";
 const DEFAULT_INSTANCE_ID = "claudeCode";
+/** Fallback project for sessions whose transcript has no recorded cwd. */
+const NO_CWD_WORKSPACE = "Claude Code imports";
 
 /** Effects read the local filesystem; both services are ambient in the server runtime. */
 type ImportContext = FileSystem.FileSystem | Path.Path;
 
 export interface ClaudeCodeImportShape {
   readonly discover: Effect.Effect<ClaudeCodeDiscoverResult, ClaudeCodeImportError, ImportContext>;
+  readonly planImport: (
+    input: ClaudeCodeImportPlanInput,
+  ) => Effect.Effect<ClaudeCodeImportPlan, ClaudeCodeImportError, ImportContext>;
   readonly importSessions: (
     input: ClaudeCodeImportInput,
   ) => Effect.Effect<ClaudeCodeImportResult, ClaudeCodeImportError, ImportContext>;
@@ -60,12 +73,6 @@ function modelSelectionFor(model: string | null): ModelSelection {
   };
 }
 
-/**
- * Build the import service from already-resolved engine and snapshot-query
- * instances. A plain factory (not an Effect layer) so the WebSocket handler can
- * construct it from services it has already acquired; the filesystem services it
- * needs are taken from the ambient context when the effects run.
- */
 export function makeClaudeCodeImportService(deps: {
   readonly engine: OrchestrationEngineShape;
   readonly snapshot: ProjectionSnapshotQueryShape;
@@ -126,7 +133,7 @@ export function makeClaudeCodeImportService(deps: {
       if (summary === null) continue;
       // Skip Claude Code internals with no real conversation: SDK title-generation
       // runs and pure slash-command/hook sessions have neither an ai-title nor a
-      // typed user prompt, so the parser leaves the title null.
+      // real user prompt, so the parser leaves the title null.
       if (summary.title === null) continue;
       const alreadyImported = yield* isAlreadyImported(summary.sessionId);
       summaries.push({
@@ -148,25 +155,94 @@ export function makeClaudeCodeImportService(deps: {
     return { sessions: summaries };
   });
 
+  const planImport: ClaudeCodeImportShape["planImport"] = (input) =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      // Group the selected sessions by cwd; each group becomes one project,
+      // matched to an existing project by workspaceRoot or proposed as new.
+      interface MutablePlanProject {
+        projectId: ProjectId;
+        title: string;
+        workspaceRoot: string;
+        isExisting: boolean;
+        sessionCount: number;
+      }
+      const projectsByRoot = new Map<string, MutablePlanProject>();
+      const sessions: ClaudeCodeImportPlanSession[] = [];
+
+      for (const filePath of input.filePaths) {
+        const summary = yield* readText(filePath).pipe(
+          Effect.map((text) => summarizeTranscript(text)),
+          Effect.catch(() => Effect.succeed(null)),
+        );
+        if (summary === null || summary.title === null) continue;
+        const sessionId = summary.sessionId ?? path.basename(filePath, ".jsonl");
+        if (yield* isAlreadyImported(sessionId)) continue;
+
+        const workspaceRoot = summary.cwd ?? NO_CWD_WORKSPACE;
+        let group = projectsByRoot.get(workspaceRoot);
+        if (group === undefined) {
+          const existing = yield* snapshot
+            .getActiveProjectByWorkspaceRoot(workspaceRoot)
+            .pipe(Effect.catch(() => Effect.succeed(Option.none())));
+          group = Option.isSome(existing)
+            ? {
+                projectId: existing.value.id,
+                title: existing.value.title,
+                workspaceRoot,
+                isExisting: true,
+                sessionCount: 0,
+              }
+            : {
+                projectId: projectIdForWorkspace(workspaceRoot),
+                title: path.basename(workspaceRoot) || workspaceRoot,
+                workspaceRoot,
+                isExisting: false,
+                sessionCount: 0,
+              };
+          projectsByRoot.set(workspaceRoot, group);
+        }
+        group.sessionCount += 1;
+        sessions.push({
+          filePath,
+          sessionId,
+          title: summary.title,
+          cwd: summary.cwd,
+          messageCount: summary.messageCount,
+          projectId: group.projectId,
+        });
+      }
+
+      const projects: ClaudeCodeImportPlanProject[] = [...projectsByRoot.values()];
+      return { projects, sessions };
+    });
+
   const importOne = (
-    filePath: string,
+    assignment: ClaudeCodeImportSessionAssignment,
+    projectById: ReadonlyMap<string, ClaudeCodeImportTargetProject>,
+    createdProjects: Set<string>,
     ingestedAt: string,
   ): Effect.Effect<ClaudeCodeImportedThread, never, ImportContext> =>
     Effect.gen(function* () {
-      const text = yield* readText(filePath);
+      const text = yield* readText(assignment.filePath);
       const parsed = parseTranscript(text);
-      const sessionId = parsed.sessionId ?? (yield* basename(filePath));
+      const sessionId = parsed.sessionId ?? (yield* basename(assignment.filePath));
+
+      const failed = (reason: string): ClaudeCodeImportedThread => ({
+        sessionId,
+        filePath: assignment.filePath,
+        status: "failed",
+        threadId: null,
+        projectId: null,
+        reason,
+      });
 
       if (parsed.items.length === 0) {
-        return {
-          sessionId,
-          filePath,
-          status: "skipped" as const,
-          threadId: null,
-          projectId: null,
-          reason: "No conversation messages found.",
-        };
+        return { ...failed("No conversation messages found."), status: "skipped" as const };
       }
+
+      const target = projectById.get(assignment.projectId);
+      if (target === undefined) return failed("Unknown target project.");
 
       const threadId = threadIdForSession(sessionId);
       const existing = yield* snapshot
@@ -175,30 +251,24 @@ export function makeClaudeCodeImportService(deps: {
       if (Option.isSome(existing)) {
         return {
           sessionId,
-          filePath,
+          filePath: assignment.filePath,
           status: "skipped" as const,
           threadId,
-          projectId: null,
+          projectId: target.projectId,
           reason: "Already imported.",
         };
       }
 
-      const workspaceRoot = parsed.cwd ?? "Claude Code imports";
-      const existingProject = yield* snapshot
-        .getActiveProjectByWorkspaceRoot(workspaceRoot)
-        .pipe(Effect.catch(() => Effect.succeed(Option.none())));
-      const projectId = Option.isSome(existingProject)
-        ? existingProject.value.id
-        : projectIdForWorkspace(workspaceRoot);
-      const path = yield* Path.Path;
-
+      // Create each new project exactly once across the batch (on the first of
+      // its sessions). Existing projects are assumed to already exist.
+      const needCreate = !target.isExisting && !createdProjects.has(target.projectId);
       const events = buildImportEvents({
         parsed,
-        projectId,
+        projectId: target.projectId,
         threadId,
-        project: Option.isSome(existingProject)
-          ? { create: false }
-          : { create: true, title: path.basename(workspaceRoot) || workspaceRoot, workspaceRoot },
+        project: needCreate
+          ? { create: true, title: target.title, workspaceRoot: target.workspaceRoot }
+          : { create: false },
         modelSelection: modelSelectionFor(parsed.model),
         importSource: IMPORT_SOURCE,
         importSessionId: sessionId,
@@ -206,22 +276,24 @@ export function makeClaudeCodeImportService(deps: {
       });
 
       yield* engine.importEvents(events);
+      // Mark created only after a successful append (the transaction committed).
+      if (needCreate) createdProjects.add(target.projectId);
       return {
         sessionId,
-        filePath,
+        filePath: assignment.filePath,
         status: "imported" as const,
         threadId,
-        projectId,
+        projectId: target.projectId,
         reason: null,
       };
     }).pipe(
       // One failed session must not abort the rest of the batch.
       Effect.catch((error) =>
         Effect.gen(function* () {
-          const sessionId = yield* basename(filePath);
+          const sessionId = yield* basename(assignment.filePath);
           return {
             sessionId,
-            filePath,
+            filePath: assignment.filePath,
             status: "failed" as const,
             threadId: null,
             projectId: null,
@@ -234,13 +306,15 @@ export function makeClaudeCodeImportService(deps: {
   const importSessions: ClaudeCodeImportShape["importSessions"] = (input) =>
     Effect.gen(function* () {
       const ingestedAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
+      const projectById = new Map(input.projects.map((project) => [project.projectId, project]));
+      const createdProjects = new Set<string>();
       const results: ClaudeCodeImportedThread[] = [];
-      // Sequential: lets a project created for one session be reused by the next.
-      for (const filePath of input.filePaths) {
-        results.push(yield* importOne(filePath, ingestedAt));
+      // Sequential so a project created for one session is reused by the next.
+      for (const assignment of input.sessions) {
+        results.push(yield* importOne(assignment, projectById, createdProjects, ingestedAt));
       }
       return { results };
     });
 
-  return { discover, importSessions };
+  return { discover, planImport, importSessions };
 }

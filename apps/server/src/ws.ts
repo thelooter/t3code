@@ -292,6 +292,7 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [WS_METHODS.serverUpdateSettings, AuthOrchestrationOperateScope],
   [WS_METHODS.serverDiscoverSourceControl, AuthOrchestrationReadScope],
   [WS_METHODS.claudeCodeDiscover, AuthOrchestrationReadScope],
+  [WS_METHODS.claudeCodePlanImport, AuthOrchestrationReadScope],
   [WS_METHODS.claudeCodeImport, AuthOrchestrationOperateScope],
   [WS_METHODS.serverGetTraceDiagnostics, AuthOrchestrationReadScope],
   [WS_METHODS.serverGetProcessDiagnostics, AuthOrchestrationReadScope],
@@ -1245,6 +1246,10 @@ const makeWsRpcLayer = (
           ),
         [WS_METHODS.claudeCodeDiscover]: (_input) =>
           observeRpcEffect(WS_METHODS.claudeCodeDiscover, claudeCodeImport.discover, {
+            "rpc.aggregate": "claudeCode",
+          }),
+        [WS_METHODS.claudeCodePlanImport]: (input) =>
+          observeRpcEffect(WS_METHODS.claudeCodePlanImport, claudeCodeImport.planImport(input), {
             "rpc.aggregate": "claudeCode",
           }),
         [WS_METHODS.claudeCodeImport]: (input) =>
