@@ -32,13 +32,14 @@ const BASE = {
   userType: "external",
 };
 
-function userString(uuid: string, parentUuid: string | null, text: string) {
+function userString(uuid: string, parentUuid: string | null, text: string, promptSource = "typed") {
   return {
     ...BASE,
     type: "user",
     uuid,
     parentUuid,
     timestamp: ts(),
+    promptSource,
     message: { role: "user", content: text },
   };
 }
@@ -258,6 +259,42 @@ describe("parseTranscript", () => {
     ]);
     const parsed = parseTranscript(doc);
     expect(parsed.model).toBe("claude-sonnet-4-6");
+  });
+
+  it("ignores hook/sdk-injected prompts for title and preview, preferring the typed prompt", () => {
+    clock = 0;
+    const doc = jsonl([
+      // A hook-injected user line (not real input) precedes the real typed prompt.
+      userString("u0", null, "Stop hook feedback: do not use as a title", "system"),
+      assistant("a0", "u0", [{ type: "text", text: "ack" }]),
+      userString("u1", "a0", "Actually fix the bug in foo.ts", "typed"),
+      assistant("a1", "u1", [{ type: "text", text: "done" }]),
+    ]);
+    const parsed = parseTranscript(doc);
+    expect(parsed.firstUserPrompt).toBe("Actually fix the bug in foo.ts");
+    expect(parsed.title).toBe("Actually fix the bug in foo.ts");
+  });
+
+  it("leaves title null for sessions with no ai-title and no typed prompt (e.g. sdk title-gen)", () => {
+    clock = 0;
+    const doc = jsonl([
+      userString("u1", null, "You write concise thread titles for coding conversations…", "sdk"),
+      assistant("a1", "u1", [{ type: "text", text: '{"title":"x"}' }]),
+    ]);
+    const parsed = parseTranscript(doc);
+    expect(parsed.firstUserPrompt).toBeNull();
+    expect(parsed.title).toBeNull();
+  });
+
+  it("uses ai-title even when the only prompts are injected", () => {
+    clock = 0;
+    const doc = jsonl([
+      { type: "ai-title", aiTitle: "Curated title", sessionId: "sess-1" },
+      userString("u1", null, "<command-message>some-skill</command-message>", "system"),
+      assistant("a1", "u1", [{ type: "text", text: "ok" }]),
+    ]);
+    const parsed = parseTranscript(doc);
+    expect(parsed.title).toBe("Curated title");
   });
 
   it("tolerates blank and corrupt lines", () => {

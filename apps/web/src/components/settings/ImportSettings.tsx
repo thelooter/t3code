@@ -41,11 +41,18 @@ function SessionRow({
   onToggle: (filePath: string, checked: boolean) => void;
 }) {
   const disabled = session.alreadyImported;
+  const meta = [
+    formatTimestamp(session.updatedAt ?? session.createdAt),
+    `${session.messageCount} message${session.messageCount === 1 ? "" : "s"}`,
+    session.model,
+    session.cwd,
+  ].filter((part): part is string => typeof part === "string" && part.length > 0);
+
   return (
     <label
       className={cn(
-        "flex cursor-pointer items-start gap-3 rounded-lg border border-border/60 p-3 transition-colors",
-        disabled ? "cursor-default opacity-60" : "hover:bg-secondary/50",
+        "flex items-start gap-3 px-4 py-3 transition-colors",
+        disabled ? "opacity-55" : "cursor-pointer hover:bg-secondary/40",
       )}
     >
       <Checkbox
@@ -56,7 +63,7 @@ function SessionRow({
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate font-medium text-foreground">
+          <span className="truncate text-[13px] font-medium text-foreground">
             {session.title ?? session.sessionId}
           </span>
           {session.alreadyImported && (
@@ -65,18 +72,9 @@ function SessionRow({
             </Badge>
           )}
         </div>
-        <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
-          {[
-            formatTimestamp(session.updatedAt ?? session.createdAt),
-            `${session.messageCount} message${session.messageCount === 1 ? "" : "s"}`,
-            session.model,
-            session.cwd,
-          ]
-            .filter((part): part is string => typeof part === "string" && part.length > 0)
-            .join("  ·  ")}
-        </p>
+        <p className="mt-0.5 truncate text-[11px] text-muted-foreground/80">{meta.join("  ·  ")}</p>
         {session.firstUserPrompt !== null && (
-          <p className="mt-1 line-clamp-2 text-[12px] text-muted-foreground/70">
+          <p className="mt-1 line-clamp-2 text-[12px] text-muted-foreground/65">
             {session.firstUserPrompt}
           </p>
         )}
@@ -85,7 +83,7 @@ function SessionRow({
   );
 }
 
-export function ClaudeCodeImportPanel() {
+function ClaudeCodeImportSource() {
   const environmentId = usePrimaryEnvironment()?.environmentId ?? null;
   const discovery = useEnvironmentQuery(
     environmentId === null ? null : claudeCodeEnvironment.discovery({ environmentId, input: {} }),
@@ -120,10 +118,7 @@ export function ClaudeCodeImportPanel() {
   const handleImport = useCallback(async () => {
     if (environmentId === null || selected.size === 0 || isImporting) return;
     setIsImporting(true);
-    const result = await runImport({
-      environmentId,
-      input: { filePaths: [...selected] },
-    });
+    const result = await runImport({ environmentId, input: { filePaths: [...selected] } });
     setIsImporting(false);
 
     if (result._tag === "Success") {
@@ -171,26 +166,23 @@ export function ClaudeCodeImportPanel() {
   );
 
   return (
-    <SettingsPageContainer>
-      <SettingsSection
-        title="Import from Claude Code"
-        icon={<FileJsonIcon className="size-4" />}
-        headerAction={rescanButton}
-      >
-        <p className="text-sm text-muted-foreground">
-          Import conversation threads from <code>~/.claude/projects</code> to browse them inside the
-          app. Imported threads are read-only.
-        </p>
-
-        {environmentId === null ? (
-          <p className="text-sm text-muted-foreground">No environment connected.</p>
-        ) : isInitialScan ? (
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-          </div>
-        ) : sessions.length === 0 ? (
+    <SettingsSection
+      title="Claude Code"
+      icon={<FileJsonIcon className="size-3.5" />}
+      headerAction={rescanButton}
+    >
+      {environmentId === null ? (
+        <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+          No environment connected.
+        </div>
+      ) : isInitialScan ? (
+        <div className="space-y-2 p-4">
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-14 w-full" />
+        </div>
+      ) : sessions.length === 0 ? (
+        <div className="p-4">
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -203,53 +195,70 @@ export function ClaudeCodeImportPanel() {
             </EmptyHeader>
             <EmptyContent>{rescanButton}</EmptyContent>
           </Empty>
-        ) : (
-          <>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[12px] text-muted-foreground">
-                {sessions.length} session{sessions.length === 1 ? "" : "s"} · {importableCount}{" "}
-                importable
-              </span>
-              <div className="flex items-center gap-1">
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  onClick={selectAllImportable}
-                  disabled={importableCount === 0}
-                >
-                  Select all
-                </Button>
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  onClick={clearSelection}
-                  disabled={selected.size === 0}
-                >
-                  Clear
-                </Button>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              {sessions.map((session) => (
-                <SessionRow
-                  key={session.filePath}
-                  session={session}
-                  selected={selected.has(session.filePath)}
-                  onToggle={toggle}
-                />
-              ))}
-            </div>
-
-            <div className="flex justify-end">
-              <Button onClick={handleImport} disabled={selected.size === 0 || isImporting}>
-                {isImporting && <Spinner className="size-3.5" />}
-                Import {selected.size > 0 ? `${selected.size} ` : ""}selected
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-2 border-b border-border/60 px-4 py-2.5">
+            <span className="text-[12px] text-muted-foreground">
+              {sessions.length} session{sessions.length === 1 ? "" : "s"} · {importableCount}{" "}
+              importable
+            </span>
+            <div className="flex items-center gap-1">
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={selectAllImportable}
+                disabled={importableCount === 0}
+              >
+                Select all
+              </Button>
+              <Button
+                size="xs"
+                variant="ghost"
+                onClick={clearSelection}
+                disabled={selected.size === 0}
+              >
+                Clear
               </Button>
             </div>
-          </>
-        )}
-      </SettingsSection>
+          </div>
+
+          <div className="max-h-[460px] divide-y divide-border/60 overflow-y-auto">
+            {sessions.map((session) => (
+              <SessionRow
+                key={session.filePath}
+                session={session}
+                selected={selected.has(session.filePath)}
+                onToggle={toggle}
+              />
+            ))}
+          </div>
+
+          <div className="flex items-center justify-end gap-3 border-t border-border/60 px-4 py-3">
+            {selected.size > 0 && (
+              <span className="mr-auto text-[12px] text-muted-foreground">
+                {selected.size} selected
+              </span>
+            )}
+            <Button onClick={handleImport} disabled={selected.size === 0 || isImporting}>
+              {isImporting && <Spinner className="size-3.5" />}
+              Import selected
+            </Button>
+          </div>
+        </>
+      )}
+    </SettingsSection>
+  );
+}
+
+export function ImportSettingsPanel() {
+  return (
+    <SettingsPageContainer>
+      <p className="px-1 text-sm text-muted-foreground">
+        Import conversations from other coding agents to browse them inside the app. Imported
+        threads are read-only.
+      </p>
+      <ClaudeCodeImportSource />
     </SettingsPageContainer>
   );
 }

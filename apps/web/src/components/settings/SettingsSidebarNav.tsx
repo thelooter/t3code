@@ -3,7 +3,7 @@ import {
   ArchiveIcon,
   ArrowLeftIcon,
   BotIcon,
-  FileJsonIcon,
+  DownloadIcon,
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
@@ -45,7 +45,7 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   { label: "Providers", to: "/settings/providers", icon: BotIcon },
   { label: "Source Control", to: "/settings/source-control", icon: GitBranchIcon },
   { label: "Connections", to: "/settings/connections", icon: Link2Icon },
-  { label: "Claude Code Import", to: "/settings/import", icon: FileJsonIcon },
+  { label: "Import", to: "/settings/import", icon: DownloadIcon },
   { label: "Archive", to: "/settings/archived", icon: ArchiveIcon },
 ];
 

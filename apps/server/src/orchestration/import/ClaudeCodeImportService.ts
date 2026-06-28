@@ -124,6 +124,10 @@ export function makeClaudeCodeImportService(deps: {
         Effect.catch(() => Effect.succeed(null)),
       );
       if (summary === null) continue;
+      // Skip Claude Code internals with no real conversation: SDK title-generation
+      // runs and pure slash-command/hook sessions have neither an ai-title nor a
+      // typed user prompt, so the parser leaves the title null.
+      if (summary.title === null) continue;
       const alreadyImported = yield* isAlreadyImported(summary.sessionId);
       summaries.push({
         sessionId: summary.sessionId ?? path.basename(filePath, ".jsonl"),

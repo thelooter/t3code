@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { ClaudeCodeImportPanel } from "../components/settings/ClaudeCodeImportSettings";
+import { ImportSettingsPanel } from "../components/settings/ImportSettings";
 
 export const Route = createFileRoute("/settings/import")({
-  component: ClaudeCodeImportPanel,
+  component: ImportSettingsPanel,
 });
