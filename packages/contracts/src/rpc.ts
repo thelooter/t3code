@@ -58,6 +58,12 @@ import {
   OrchestrationReplayEventsInput,
   OrchestrationRpcSchemas,
 } from "./orchestration.ts";
+import {
+  ClaudeCodeDiscoverResult,
+  ClaudeCodeImportError,
+  ClaudeCodeImportInput,
+  ClaudeCodeImportResult,
+} from "./claudeCodeImport.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
   RelayClientInstallFailedError,
@@ -209,6 +215,8 @@ export const WS_METHODS = {
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
   serverDiscoverSourceControl: "server.discoverSourceControl",
+  claudeCodeDiscover: "claudeCode.discover",
+  claudeCodeImport: "claudeCode.import",
   serverGetTraceDiagnostics: "server.getTraceDiagnostics",
   serverGetProcessDiagnostics: "server.getProcessDiagnostics",
   serverGetProcessResourceHistory: "server.getProcessResourceHistory",
@@ -288,6 +296,18 @@ export const WsServerDiscoverSourceControlRpc = Rpc.make(WS_METHODS.serverDiscov
   payload: Schema.Struct({}),
   success: SourceControlDiscoveryResult,
   error: EnvironmentAuthorizationError,
+});
+
+export const WsClaudeCodeDiscoverRpc = Rpc.make(WS_METHODS.claudeCodeDiscover, {
+  payload: Schema.Struct({}),
+  success: ClaudeCodeDiscoverResult,
+  error: Schema.Union([ClaudeCodeImportError, EnvironmentAuthorizationError]),
+});
+
+export const WsClaudeCodeImportRpc = Rpc.make(WS_METHODS.claudeCodeImport, {
+  payload: ClaudeCodeImportInput,
+  success: ClaudeCodeImportResult,
+  error: Schema.Union([ClaudeCodeImportError, EnvironmentAuthorizationError]),
 });
 
 export const WsServerGetTraceDiagnosticsRpc = Rpc.make(WS_METHODS.serverGetTraceDiagnostics, {
@@ -750,4 +770,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
+  WsClaudeCodeDiscoverRpc,
+  WsClaudeCodeImportRpc,
 );
