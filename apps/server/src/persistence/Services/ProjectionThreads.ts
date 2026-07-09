@@ -33,6 +33,8 @@ export const ProjectionThread = Schema.Struct({
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
+  importedSource: Schema.NullOr(Schema.String),
+  importedSessionId: Schema.NullOr(Schema.String),
   latestTurnId: Schema.NullOr(TurnId),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,

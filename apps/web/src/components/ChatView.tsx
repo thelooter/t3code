@@ -424,7 +424,9 @@ function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
   return [attachTransitionGroupRef, attachComposerAnchorRef, captureComposerRect] as const;
 }
 const PreviewPanel = lazy(() =>
-  import("./preview/PreviewPanel").then((module) => ({ default: module.PreviewPanel })),
+  import("./preview/PreviewPanel").then((module) => ({
+    default: module.PreviewPanel,
+  })),
 );
 const DiffPanel = lazy(() => import("./DiffPanel"));
 const FilePreviewPanel = lazy(() => import("./files/FilePreviewPanel"));
@@ -1203,15 +1205,21 @@ function ChatViewContent(props: ChatViewProps) {
     [environmentId, threadId],
   );
   const routeThreadKey = useMemo(() => scopedThreadKey(routeThreadRef), [routeThreadRef]);
-  const updateProject = useAtomCommand(projectEnvironment.update, { reportFailure: false });
+  const updateProject = useAtomCommand(projectEnvironment.update, {
+    reportFailure: false,
+  });
   const upsertKeybinding = useAtomCommand(serverEnvironment.upsertKeybinding, {
     reportFailure: false,
   });
   const openTerminal = useAtomCommand(terminalEnvironment.open, "terminal open");
   const writeTerminal = useAtomCommand(terminalEnvironment.write, "terminal write");
   const closeTerminalMutation = useAtomCommand(terminalEnvironment.close, "terminal close");
-  const createThread = useAtomCommand(threadEnvironment.create, { reportFailure: false });
-  const deleteThread = useAtomCommand(threadEnvironment.delete, { reportFailure: false });
+  const createThread = useAtomCommand(threadEnvironment.create, {
+    reportFailure: false,
+  });
+  const deleteThread = useAtomCommand(threadEnvironment.delete, {
+    reportFailure: false,
+  });
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -1222,7 +1230,9 @@ function ChatViewContent(props: ChatViewProps) {
   const setThreadInteractionMode = useAtomCommand(threadEnvironment.setInteractionMode, {
     reportFailure: false,
   });
-  const startThreadTurn = useAtomCommand(threadEnvironment.startTurn, { reportFailure: false });
+  const startThreadTurn = useAtomCommand(threadEnvironment.startTurn, {
+    reportFailure: false,
+  });
   const interruptThreadTurn = useAtomCommand(threadEnvironment.interruptTurn, {
     reportFailure: false,
   });
@@ -1235,11 +1245,15 @@ function ChatViewContent(props: ChatViewProps) {
   const revertThreadCheckpoint = useAtomCommand(threadEnvironment.revertCheckpoint, {
     reportFailure: false,
   });
-  const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
+  const openPreview = useAtomCommand(previewEnvironment.open, {
+    reportFailure: false,
+  });
   const closePreview = useAtomCommand(previewEnvironment.close, "preview close");
   const { environments } = useEnvironments();
   const primaryEnvironment = usePrimaryEnvironment();
-  const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, { reportFailure: false });
+  const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, {
+    reportFailure: false,
+  });
   const environmentById = useMemo(
     () => new Map(environments.map((environment) => [environment.environmentId, environment])),
     [environments],
@@ -1538,6 +1552,10 @@ function ChatViewContent(props: ChatViewProps) {
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
   const activeThreadId = activeThread?.id ?? null;
   const activeThreadEnvironmentId = activeThread?.environmentId ?? null;
+  // Threads imported from an external tool (e.g. Claude Code) are read-only:
+  // there is no live session to resume yet, so the composer is replaced with a
+  // notice to prevent dispatching turns at them.
+  const isImportedThread = (activeThread?.importedSource ?? null) !== null;
   const runningTerminalIds = useThreadRunningTerminalIds({
     environmentId: activeThread?.environmentId ?? null,
     threadId: activeThreadId,
@@ -2013,7 +2031,11 @@ function ChatViewContent(props: ChatViewProps) {
   const hasMultipleRegisteredEnvironments = environments.length > 1;
   const versionMismatchServerLabel =
     hasMultipleRegisteredEnvironments && activeThread
-      ? `${environmentById.get(activeThread.environmentId)?.label ?? serverConfig?.environment.label ?? activeThread.environmentId} server`
+      ? `${
+          environmentById.get(activeThread.environmentId)?.label ??
+          serverConfig?.environment.label ??
+          activeThread.environmentId
+        } server`
       : "server";
   const serverUpdateEnvironmentId = activeThread?.environmentId ?? null;
   const versionMismatchSelfUpdate = resolveServerSelfUpdateCapability(serverConfig);
@@ -2746,7 +2768,10 @@ function ChatViewContent(props: ChatViewProps) {
     (targetThreadId: ThreadId | null, error: string | null) => {
       if (!targetThreadId) return;
       const nextError = sanitizeThreadErrorMessage(error);
-      const nextEntry: LocalThreadErrorEntry = { message: nextError, at: Date.now() };
+      const nextEntry: LocalThreadErrorEntry = {
+        message: nextError,
+        at: Date.now(),
+      };
       if (
         shouldWriteThreadErrorToCurrentServerThread({
           activeServerThread,
@@ -3026,7 +3051,10 @@ function ChatViewContent(props: ChatViewProps) {
         storeSetActiveTerminal(activeThreadRef, targetTerminalId);
       }
 
-      const openResult = await openTerminal({ environmentId, input: openTerminalInput });
+      const openResult = await openTerminal({
+        environmentId,
+        input: openTerminalInput,
+      });
       if (openResult._tag === "Failure") {
         if (!isAtomCommandInterrupted(openResult)) {
           const error = squashAtomCommandFailure(openResult);
@@ -3408,7 +3436,11 @@ function ChatViewContent(props: ChatViewProps) {
       if (!activeThreadRef || activeRightPanelSurface?.kind !== "terminal") return;
       void closeTerminalMutation({
         environmentId: activeThreadRef.environmentId,
-        input: { threadId: activeThreadRef.threadId, terminalId, deleteHistory: true },
+        input: {
+          threadId: activeThreadRef.threadId,
+          terminalId,
+          deleteHistory: true,
+        },
       });
       storeCloseTerminal(activeThreadRef, terminalId);
       useRightPanelStore
@@ -3465,7 +3497,11 @@ function ChatViewContent(props: ChatViewProps) {
             storeCloseTerminal(activeThreadRef, terminalId);
             void closeTerminalMutation({
               environmentId: activeThreadRef.environmentId,
-              input: { threadId: activeThreadRef.threadId, terminalId, deleteHistory: true },
+              input: {
+                threadId: activeThreadRef.threadId,
+                terminalId,
+                deleteHistory: true,
+              },
             });
           }
         }
@@ -3905,7 +3941,6 @@ function ChatViewContent(props: ChatViewProps) {
     };
     requestAnimationFrame(() => positionAnchor(12));
   }, []);
-
   const onIsAtEndChange = useCallback((isAtEnd: boolean) => {
     if (
       !isAtEnd &&
@@ -6320,7 +6355,9 @@ function ChatViewContent(props: ChatViewProps) {
                     className="relative"
                     style={
                       forceExpandedMobileComposer
-                        ? { viewTransitionName: MOBILE_COMPOSER_VIEW_TRANSITION_NAME }
+                        ? {
+                            viewTransitionName: MOBILE_COMPOSER_VIEW_TRANSITION_NAME,
+                          }
                         : undefined
                     }
                   >
@@ -6332,79 +6369,89 @@ function ChatViewContent(props: ChatViewProps) {
                     >
                       <div className="chat-composer-glass-host relative z-10 w-full rounded-[22px]">
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
-                          <ChatComposer
-                            composerRef={composerRef}
-                            composerDraftTarget={composerDraftTarget}
-                            environmentId={environmentId}
-                            routeKind={routeKind}
-                            routeThreadRef={routeThreadRef}
-                            draftId={draftId}
-                            activeThreadId={activeThreadId}
-                            activeThreadEnvironmentId={activeThread?.environmentId}
-                            activeThread={activeThread}
-                            isServerThread={isServerThread}
-                            isLocalDraftThread={isLocalDraftThread}
-                            forceExpandedOnMobile={forceExpandedMobileComposer && isDraftHeroState}
-                            projectSelectionRequired={isLocalDraftThread && activeProject === null}
-                            phase={phase}
-                            isConnecting={isConnecting}
-                            isSendBusy={isSendBusy}
-                            sendDisabledReason={threadDetailLoading ? "Messages loading" : null}
-                            isPreparingWorktree={isPreparingWorktree}
-                            environmentUnavailable={activeEnvironmentUnavailableState}
-                            activePendingApproval={activePendingApproval}
-                            pendingApprovals={pendingApprovals}
-                            pendingUserInputs={pendingUserInputs}
-                            activePendingProgress={activePendingProgress}
-                            activePendingResolvedAnswers={activePendingResolvedAnswers}
-                            activePendingIsResponding={activePendingIsResponding}
-                            activePendingDraftAnswers={activePendingDraftAnswers}
-                            activePendingQuestionIndex={activePendingQuestionIndex}
-                            respondingRequestIds={respondingRequestIds}
-                            showPlanFollowUpPrompt={showPlanFollowUpPrompt}
-                            activeProposedPlan={activeProposedPlan}
-                            runtimeMode={runtimeMode}
-                            interactionMode={interactionMode}
-                            lockedProvider={lockedProvider}
-                            providerStatuses={providerStatuses as ServerProvider[]}
-                            activeProjectDefaultModelSelection={
-                              activeProject?.defaultModelSelection
-                            }
-                            activeThreadModelSelection={activeThread?.modelSelection}
-                            activeThreadActivities={activeThread?.activities}
-                            resolvedTheme={resolvedTheme}
-                            settings={settings}
-                            keybindings={keybindings}
-                            terminalOpen={Boolean(terminalUiState.terminalOpen)}
-                            gitCwd={gitCwd}
-                            promptRef={promptRef}
-                            composerImagesRef={composerImagesRef}
-                            composerTerminalContextsRef={composerTerminalContextsRef}
-                            composerElementContextsRef={composerElementContextsRef}
-                            onSend={onSend}
-                            onInterrupt={onInterrupt}
-                            onImplementPlanInNewThread={onImplementPlanInNewThread}
-                            onRespondToApproval={onRespondToApproval}
-                            onSelectActivePendingUserInputOption={
-                              onSelectActivePendingUserInputOption
-                            }
-                            onAdvanceActivePendingUserInput={onAdvanceActivePendingUserInput}
-                            onPreviousActivePendingUserInputQuestion={
-                              onPreviousActivePendingUserInputQuestion
-                            }
-                            onChangeActivePendingUserInputCustomAnswer={
-                              onChangeActivePendingUserInputCustomAnswer
-                            }
-                            onProviderModelSelect={onProviderModelSelect}
-                            getModelDisabledReason={getModelDisabledReason}
-                            toggleInteractionMode={toggleInteractionMode}
-                            handleRuntimeModeChange={handleRuntimeModeChange}
-                            handleInteractionModeChange={handleInteractionModeChange}
-                            focusComposer={focusComposer}
-                            scheduleComposerFocus={scheduleComposerFocus}
-                            setThreadError={setThreadError}
-                            onExpandImage={onExpandTimelineImage}
-                          />
+                          {isImportedThread ? (
+                            <div className="pointer-events-auto rounded-[22px] border border-border/60 bg-secondary/40 px-4 py-3 text-center text-[13px] text-muted-foreground">
+                              Imported from Claude Code · read-only conversation
+                            </div>
+                          ) : (
+                            <ChatComposer
+                              composerRef={composerRef}
+                              composerDraftTarget={composerDraftTarget}
+                              environmentId={environmentId}
+                              routeKind={routeKind}
+                              routeThreadRef={routeThreadRef}
+                              draftId={draftId}
+                              activeThreadId={activeThreadId}
+                              activeThreadEnvironmentId={activeThread?.environmentId}
+                              activeThread={activeThread}
+                              isServerThread={isServerThread}
+                              isLocalDraftThread={isLocalDraftThread}
+                              forceExpandedOnMobile={
+                                forceExpandedMobileComposer && isDraftHeroState
+                              }
+                              projectSelectionRequired={
+                                isLocalDraftThread && activeProject === null
+                              }
+                              phase={phase}
+                              isConnecting={isConnecting}
+                              isSendBusy={isSendBusy}
+                              sendDisabledReason={threadDetailLoading ? "Messages loading" : null}
+                              isPreparingWorktree={isPreparingWorktree}
+                              environmentUnavailable={activeEnvironmentUnavailableState}
+                              activePendingApproval={activePendingApproval}
+                              pendingApprovals={pendingApprovals}
+                              pendingUserInputs={pendingUserInputs}
+                              activePendingProgress={activePendingProgress}
+                              activePendingResolvedAnswers={activePendingResolvedAnswers}
+                              activePendingIsResponding={activePendingIsResponding}
+                              activePendingDraftAnswers={activePendingDraftAnswers}
+                              activePendingQuestionIndex={activePendingQuestionIndex}
+                              respondingRequestIds={respondingRequestIds}
+                              showPlanFollowUpPrompt={showPlanFollowUpPrompt}
+                              activeProposedPlan={activeProposedPlan}
+                              runtimeMode={runtimeMode}
+                              interactionMode={interactionMode}
+                              lockedProvider={lockedProvider}
+                              providerStatuses={providerStatuses as ServerProvider[]}
+                              activeProjectDefaultModelSelection={
+                                activeProject?.defaultModelSelection
+                              }
+                              activeThreadModelSelection={activeThread?.modelSelection}
+                              activeThreadActivities={activeThread?.activities}
+                              resolvedTheme={resolvedTheme}
+                              settings={settings}
+                              keybindings={keybindings}
+                              terminalOpen={Boolean(terminalUiState.terminalOpen)}
+                              gitCwd={gitCwd}
+                              promptRef={promptRef}
+                              composerImagesRef={composerImagesRef}
+                              composerTerminalContextsRef={composerTerminalContextsRef}
+                              composerElementContextsRef={composerElementContextsRef}
+                              onSend={onSend}
+                              onInterrupt={onInterrupt}
+                              onImplementPlanInNewThread={onImplementPlanInNewThread}
+                              onRespondToApproval={onRespondToApproval}
+                              onSelectActivePendingUserInputOption={
+                                onSelectActivePendingUserInputOption
+                              }
+                              onAdvanceActivePendingUserInput={onAdvanceActivePendingUserInput}
+                              onPreviousActivePendingUserInputQuestion={
+                                onPreviousActivePendingUserInputQuestion
+                              }
+                              onChangeActivePendingUserInputCustomAnswer={
+                                onChangeActivePendingUserInputCustomAnswer
+                              }
+                              onProviderModelSelect={onProviderModelSelect}
+                              getModelDisabledReason={getModelDisabledReason}
+                              toggleInteractionMode={toggleInteractionMode}
+                              handleRuntimeModeChange={handleRuntimeModeChange}
+                              handleInteractionModeChange={handleInteractionModeChange}
+                              focusComposer={focusComposer}
+                              scheduleComposerFocus={scheduleComposerFocus}
+                              setThreadError={setThreadError}
+                              onExpandImage={onExpandTimelineImage}
+                            />
+                          )}
                         </div>
                       </div>
                       <div className="min-h-0">
@@ -6605,7 +6652,9 @@ function ChatViewContent(props: ChatViewProps) {
 
       {expandedImage && (
         <ExpandedImageDialog
-          key={`${expandedImage.images[expandedImage.index]?.src ?? "image"}:${expandedImage.index}`}
+          key={`${expandedImage.images[expandedImage.index]?.src ?? "image"}:${
+            expandedImage.index
+          }`}
           preview={expandedImage}
           onClose={closeExpandedImage}
         />

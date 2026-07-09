@@ -398,6 +398,17 @@ export const OrchestrationThread = Schema.Struct({
   // Pending-only state. Optional so older servers remain compatible.
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
   deletedAt: Schema.NullOr(IsoDateTime),
+  /**
+   * Provenance for threads imported from an external tool (e.g. "claude-code").
+   * Null/absent for natively-created threads. A non-null value marks the thread
+   * as read-only / non-resumable in the current UI.
+   */
+  importedSource: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  /**
+   * The external tool's session id for an imported thread. Persisted now so a
+   * future "resume" can reattach a live provider session to this thread.
+   */
+  importedSessionId: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   messages: Schema.Array(OrchestrationMessage),
   proposedPlans: Schema.Array(OrchestrationProposedPlan).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
@@ -1119,6 +1130,9 @@ export const ThreadCreatedPayload = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  // Provenance for imported threads; omitted for natively-created threads.
+  importedSource: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  importedSessionId: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });

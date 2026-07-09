@@ -5,6 +5,7 @@ export type SettingsPath =
   | "/settings/providers"
   | "/settings/source-control"
   | "/settings/connections"
+  | "/settings/import"
   | "/settings/archived";
 
 export interface SettingsSearchItem {
@@ -25,6 +26,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/providers": "Providers",
   "/settings/source-control": "Source Control",
   "/settings/connections": "Connections",
+  "/settings/import": "Import",
   "/settings/archived": "Archive",
 };
 

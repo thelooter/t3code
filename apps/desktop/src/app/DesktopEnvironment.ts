@@ -142,14 +142,20 @@ const make = Effect.fn("desktop.environment.make")(function* (
   const homeDirectory = input.homeDirectory;
   const devServerUrl = config.devServerUrl;
   const isDevelopment = Option.isSome(devServerUrl);
-  const appDataDirectory =
+  // `T3CODE_APP_DATA_DIR` relocates the app's own userData parent directory
+  // without hijacking `XDG_CONFIG_HOME`. Overriding `XDG_CONFIG_HOME` to move
+  // userData leaks into every spawned child process (terminals, agents, `gh`,
+  // `git`), pointing them at the wrong config dir; this override is read only
+  // here and never forwarded, so those tools keep seeing the real environment.
+  const appDataDirectory = Option.getOrElse(config.appDataDirectoryOverride, () =>
     input.platform === "win32"
       ? Option.getOrElse(config.appDataDirectory, () =>
           path.join(homeDirectory, "AppData", "Roaming"),
         )
       : input.platform === "darwin"
         ? path.join(homeDirectory, "Library", "Application Support")
-        : Option.getOrElse(config.xdgConfigHome, () => path.join(homeDirectory, ".config"));
+        : Option.getOrElse(config.xdgConfigHome, () => path.join(homeDirectory, ".config")),
+  );
   const baseDir = resolveDesktopBaseDir({
     homeDirectory,
     joinPath: path.join,

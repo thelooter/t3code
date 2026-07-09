@@ -11,6 +11,7 @@ import {
   ArchiveIcon,
   ArrowLeftIcon,
   BotIcon,
+  DownloadIcon,
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
@@ -51,6 +52,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/providers": BotIcon,
   "/settings/source-control": GitBranchIcon,
   "/settings/connections": Link2Icon,
+  "/settings/import": DownloadIcon,
   "/settings/archived": ArchiveIcon,
 };
 

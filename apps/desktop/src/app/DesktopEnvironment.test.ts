@@ -111,6 +111,31 @@ describe("DesktopEnvironment", () => {
     }),
   );
 
+  it.effect("relocates the app data directory via T3CODE_APP_DATA_DIR", () =>
+    Effect.gen(function* () {
+      const linux = yield* makeEnvironment(
+        { platform: "linux", homeDirectory: "/home/alice" },
+        {
+          T3CODE_APP_DATA_DIR: " /home/alice/.local/share/t3code/sandbox/config ",
+          XDG_CONFIG_HOME: "/home/alice/.config",
+        },
+      );
+
+      // The override wins over XDG_CONFIG_HOME, so spawned tools that read
+      // XDG_CONFIG_HOME are unaffected by where the app stores its userData.
+      assert.equal(linux.appDataDirectory, "/home/alice/.local/share/t3code/sandbox/config");
+
+      const darwin = yield* makeEnvironment(
+        {},
+        {
+          T3CODE_APP_DATA_DIR: "/tmp/sandbox/app-data",
+        },
+      );
+
+      assert.equal(darwin.appDataDirectory, "/tmp/sandbox/app-data");
+    }),
+  );
+
   it.effect("uses a configured app user model id override", () =>
     Effect.gen(function* () {
       const environment = yield* makeEnvironment(
