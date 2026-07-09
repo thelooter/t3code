@@ -51,6 +51,20 @@ export interface OrchestrationEngineShape {
   ) => Effect.Effect<{ sequence: number }, OrchestrationDispatchError, never>;
 
   /**
+   * Append pre-built historical events directly, bypassing the command decider.
+   *
+   * Used to import conversation transcripts from external tools (e.g. Claude
+   * Code). Events are appended and projected in a single transaction, serialized
+   * through the same internal queue as {@link dispatch} so the in-memory read
+   * model stays consistent. Callers are responsible for constructing valid,
+   * ordered events (e.g. `thread.created` before its messages) with historical
+   * timestamps in their payloads.
+   */
+  readonly importEvents: (
+    events: ReadonlyArray<Omit<OrchestrationEvent, "sequence">>,
+  ) => Effect.Effect<{ lastSequence: number }, OrchestrationDispatchError, never>;
+
+  /**
    * Stream persisted domain events in dispatch order.
    *
    * This is a hot runtime stream (new events only), not a historical replay.
