@@ -674,14 +674,65 @@ function extractWorkLogToolLifecycleStatus(
   return undefined;
 }
 
+const IMPORTED_TOOL_SOURCE = "claude-code";
+
+/**
+ * Fields for an imported Claude Code tool call. Imported activities carry a flat
+ * payload (`{ source, name, input, result, isError }`) rather than the live
+ * runtime's nested shape, so map it directly into the work-entry fields that
+ * drive the expandable body (command/input + result).
+ */
+function importedToolFields(payload: Record<string, unknown> | null): {
+  toolTitle: string;
+  command: string | null;
+  rawCommand: string | null;
+  detail: string | null;
+  requestKind: "command" | "file-read" | "file-change" | null;
+} | null {
+  if (payload === null || payload.source !== IMPORTED_TOOL_SOURCE) return null;
+  const name = asTrimmedString(payload.name);
+  if (name === null) return null;
+  const inputRecord = asRecord(payload.input);
+  let command = asTrimmedString(inputRecord?.command);
+  if (command === null && payload.input !== null && payload.input !== undefined) {
+    const serialized = JSON.stringify(payload.input, null, 2);
+    command = serialized === "{}" || serialized === "null" ? null : serialized;
+  }
+  const requestKind =
+    name === "Bash"
+      ? "command"
+      : name === "Read"
+        ? "file-read"
+        : name === "Edit" || name === "Write" || name === "MultiEdit"
+          ? "file-change"
+          : null;
+  return {
+    toolTitle: name,
+    command,
+    rawCommand: command,
+    detail: asTrimmedString(payload.result),
+    requestKind,
+  };
+}
+
 function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry {
   const payload =
     activity.payload && typeof activity.payload === "object"
       ? (activity.payload as Record<string, unknown>)
       : null;
-  const commandPreview = extractToolCommand(payload);
+  const imported = importedToolFields(payload);
+  const commandPreview = imported
+    ? { command: imported.command, rawCommand: imported.rawCommand }
+    : extractToolCommand(payload);
   const changedFiles = extractChangedFiles(payload);
-  const title = extractToolTitle(payload);
+  const title = imported?.toolTitle ?? extractToolTitle(payload);
+  // Imported Claude Code reasoning blocks arrive as `kind: "thinking"` with the
+  // full text in the payload; render them as a collapsible thinking entry.
+  const isThinking = activity.kind === "thinking";
+  const thinkingText =
+    isThinking && typeof payload?.text === "string" && payload.text.length > 0
+      ? payload.text
+      : null;
   const isTaskActivity = activity.kind === "task.progress" || activity.kind === "task.completed";
   const taskSummary =
     isTaskActivity && typeof payload?.summary === "string" && payload.summary.length > 0
@@ -695,14 +746,18 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       ? payload.detail
       : null;
   const taskLabel = taskSummary || taskDetailAsLabel;
-  const detail = isTaskActivity
-    ? !taskDetailAsLabel &&
-      payload &&
-      typeof payload.detail === "string" &&
-      payload.detail.length > 0
-      ? stripTrailingExitCode(payload.detail).output
-      : null
-    : extractToolDetail(payload, title ?? activity.summary);
+  const detail = imported
+    ? imported.detail
+    : isThinking
+      ? thinkingText
+      : isTaskActivity
+        ? !taskDetailAsLabel &&
+          payload &&
+          typeof payload.detail === "string" &&
+          payload.detail.length > 0
+          ? stripTrailingExitCode(payload.detail).output
+          : null
+        : extractToolDetail(payload, title ?? activity.summary);
   const toolCallId = isTaskActivity ? null : extractToolCallId(payload);
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
@@ -710,7 +765,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     turnId: activity.turnId,
     label: taskLabel || activity.summary,
     tone:
-      activity.kind === "task.progress"
+      activity.kind === "task.progress" || isThinking
         ? "thinking"
         : activity.tone === "approval"
           ? "info"
@@ -718,7 +773,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     activityKind: activity.kind,
   };
   const itemType = extractWorkLogItemType(payload);
-  const requestKind = extractWorkLogRequestKind(payload);
+  const requestKind = imported?.requestKind ?? extractWorkLogRequestKind(payload);
   if (detail) {
     entry.detail = detail;
   }
@@ -750,7 +805,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
     entry.toolCallId = toolCallId;
   }
   let toolLifecycleStatus = extractWorkLogToolLifecycleStatus(payload);
-  if (!toolLifecycleStatus && activity.kind === "tool.completed") {
+  if (
+    !toolLifecycleStatus &&
+    (activity.kind === "tool.completed" || activity.kind === "tool.failed")
+  ) {
     toolLifecycleStatus = "completed";
   }
   if (toolLifecycleStatus) {

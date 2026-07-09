@@ -100,6 +100,7 @@ import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
+import { makeClaudeCodeImportService } from "./orchestration/import/ClaudeCodeImportService.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
 import * as BitbucketApi from "./sourceControl/BitbucketApi.ts";
@@ -292,6 +293,9 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [WS_METHODS.serverGetSettings, AuthOrchestrationReadScope],
   [WS_METHODS.serverUpdateSettings, AuthOrchestrationOperateScope],
   [WS_METHODS.serverDiscoverSourceControl, AuthOrchestrationReadScope],
+  [WS_METHODS.claudeCodeDiscover, AuthOrchestrationReadScope],
+  [WS_METHODS.claudeCodePlanImport, AuthOrchestrationReadScope],
+  [WS_METHODS.claudeCodeImport, AuthOrchestrationOperateScope],
   [WS_METHODS.serverGetTraceDiagnostics, AuthOrchestrationReadScope],
   [WS_METHODS.serverGetProcessDiagnostics, AuthOrchestrationReadScope],
   [WS_METHODS.serverGetProcessResourceHistory, AuthOrchestrationReadScope],
@@ -421,6 +425,10 @@ const makeWsRpcLayer = (
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const sourceControlDiscovery = yield* SourceControlDiscovery.SourceControlDiscovery;
+      const claudeCodeImport = makeClaudeCodeImportService({
+        engine: orchestrationEngine,
+        snapshot: projectionSnapshotQuery,
+      });
       const automaticGitFetchInterval = serverSettings.getSettings.pipe(
         Effect.map((settings) => settings.automaticGitFetchInterval),
         Effect.catch((cause) =>
@@ -1305,6 +1313,18 @@ const makeWsRpcLayer = (
               "rpc.aggregate": "server",
             },
           ),
+        [WS_METHODS.claudeCodeDiscover]: (_input) =>
+          observeRpcEffect(WS_METHODS.claudeCodeDiscover, claudeCodeImport.discover, {
+            "rpc.aggregate": "claudeCode",
+          }),
+        [WS_METHODS.claudeCodePlanImport]: (input) =>
+          observeRpcEffect(WS_METHODS.claudeCodePlanImport, claudeCodeImport.planImport(input), {
+            "rpc.aggregate": "claudeCode",
+          }),
+        [WS_METHODS.claudeCodeImport]: (input) =>
+          observeRpcEffect(WS_METHODS.claudeCodeImport, claudeCodeImport.importSessions(input), {
+            "rpc.aggregate": "claudeCode",
+          }),
         [WS_METHODS.serverGetTraceDiagnostics]: (_input) =>
           observeRpcEffect(
             WS_METHODS.serverGetTraceDiagnostics,
