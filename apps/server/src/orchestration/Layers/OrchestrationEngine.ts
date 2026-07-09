@@ -91,7 +91,11 @@ const makeOrchestrationEngine = Effect.gen(function* () {
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
   let commandReadModel = createEmptyReadModel(yield* nowIso);
 
-  const commandQueue = yield* Queue.unbounded<CommandEnvelope>();
+  // A single work queue serializes all writers (command dispatch and event
+  // import) through one worker so the in-memory read model stays consistent and
+  // event sequences are assigned without races. Each item is a self-contained
+  // effect that resolves its own result Deferred.
+  const workQueue = yield* Queue.unbounded<Effect.Effect<void>>();
   const eventPubSub = yield* PubSub.unbounded<OrchestrationEvent>();
 
   const projectEventsOntoReadModel = (
@@ -328,10 +332,65 @@ const makeOrchestrationEngine = Effect.gen(function* () {
     );
   };
 
+  const processImport = (
+    events: ReadonlyArray<Omit<OrchestrationEvent, "sequence">>,
+    result: Deferred.Deferred<{ lastSequence: number }, OrchestrationDispatchError>,
+  ): Effect.Effect<void> =>
+    Effect.exit(
+      Effect.gen(function* () {
+        if (events.length === 0) {
+          return {
+            committedEvents: [] as OrchestrationEvent[],
+            lastSequence: commandReadModel.snapshotSequence,
+            nextCommandReadModel: commandReadModel,
+          } as const;
+        }
+        return yield* sql
+          .withTransaction(
+            Effect.gen(function* () {
+              const committedEvents: OrchestrationEvent[] = [];
+              let nextCommandReadModel = commandReadModel;
+              for (const nextEvent of events) {
+                const savedEvent = yield* eventStore.append(nextEvent);
+                nextCommandReadModel = yield* projectEvent(nextCommandReadModel, savedEvent);
+                yield* projectionPipeline.projectEvent(savedEvent);
+                committedEvents.push(savedEvent);
+              }
+              const lastSequence =
+                committedEvents.at(-1)?.sequence ?? commandReadModel.snapshotSequence;
+              return { committedEvents, lastSequence, nextCommandReadModel } as const;
+            }),
+          )
+          .pipe(
+            Effect.catchTag("SqlError", (sqlError) =>
+              Effect.fail(
+                toPersistenceSqlError("OrchestrationEngine.processImport:transaction")(sqlError),
+              ),
+            ),
+          );
+      }),
+    ).pipe(
+      Effect.flatMap((exit) =>
+        Effect.gen(function* () {
+          if (Exit.isSuccess(exit)) {
+            // Commit the read model only after the transaction succeeds; on
+            // failure the transaction rolled back, so nothing to reconcile.
+            commandReadModel = exit.value.nextCommandReadModel;
+            for (const event of exit.value.committedEvents) {
+              yield* PubSub.publish(eventPubSub, event);
+            }
+            yield* Deferred.succeed(result, { lastSequence: exit.value.lastSequence });
+            return;
+          }
+          yield* Deferred.fail(result, Cause.squash(exit.cause) as OrchestrationDispatchError);
+        }),
+      ),
+    );
+
   yield* projectionPipeline.bootstrap;
   commandReadModel = yield* projectionSnapshotQuery.getCommandReadModel();
 
-  const worker = Effect.forever(Queue.take(commandQueue).pipe(Effect.flatMap(processEnvelope)));
+  const worker = Effect.forever(Queue.take(workQueue).pipe(Effect.flatMap((work) => work)));
   yield* Effect.forkScoped(worker);
   yield* Effect.logDebug("orchestration engine started").pipe(
     Effect.annotateLogs({ sequence: commandReadModel.snapshotSequence }),
@@ -343,18 +402,29 @@ const makeOrchestrationEngine = Effect.gen(function* () {
   const dispatch: OrchestrationEngineShape["dispatch"] = (command, options) =>
     Effect.gen(function* () {
       const result = yield* Deferred.make<{ sequence: number }, OrchestrationDispatchError>();
-      yield* Queue.offer(commandQueue, {
-        command,
-        origin: options?.origin,
-        result,
-        startedAtMs: yield* Clock.currentTimeMillis,
-      });
+      yield* Queue.offer(
+        workQueue,
+        processEnvelope({
+          command,
+          origin: options?.origin,
+          result,
+          startedAtMs: yield* Clock.currentTimeMillis,
+        }),
+      );
+      return yield* Deferred.await(result);
+    });
+
+  const importEvents: OrchestrationEngineShape["importEvents"] = (events) =>
+    Effect.gen(function* () {
+      const result = yield* Deferred.make<{ lastSequence: number }, OrchestrationDispatchError>();
+      yield* Queue.offer(workQueue, processImport(events, result));
       return yield* Deferred.await(result);
     });
 
   return {
     readEvents,
     dispatch,
+    importEvents,
     // Each access creates a fresh PubSub subscription so that multiple
     // consumers (wsServer, ProviderRuntimeIngestion, CheckpointReactor, etc.)
     // each independently receive all domain events.

@@ -113,6 +113,7 @@ import * as UsageService from "./usage/UsageService.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
+import { makeClaudeCodeImportService } from "./orchestration/import/ClaudeCodeImportService.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
 import * as BitbucketApi from "./sourceControl/BitbucketApi.ts";
@@ -460,6 +461,10 @@ const makeWsRpcLayer = (
       );
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const sourceControlDiscovery = yield* SourceControlDiscovery.SourceControlDiscovery;
+      const claudeCodeImport = makeClaudeCodeImportService({
+        engine: orchestrationEngine,
+        snapshot: projectionSnapshotQuery,
+      });
       const automaticGitFetchInterval = serverSettings.getSettings.pipe(
         Effect.map(
           (settings) => resolveServerBackgroundActivitySettings(settings).automaticGitFetchInterval,
@@ -1619,6 +1624,18 @@ const makeWsRpcLayer = (
               "rpc.aggregate": "server",
             },
           ),
+        [WS_METHODS.claudeCodeDiscover]: (_input) =>
+          observeRpcEffect(WS_METHODS.claudeCodeDiscover, claudeCodeImport.discover, {
+            "rpc.aggregate": "claudeCode",
+          }),
+        [WS_METHODS.claudeCodePlanImport]: (input) =>
+          observeRpcEffect(WS_METHODS.claudeCodePlanImport, claudeCodeImport.planImport(input), {
+            "rpc.aggregate": "claudeCode",
+          }),
+        [WS_METHODS.claudeCodeImport]: (input) =>
+          observeRpcEffect(WS_METHODS.claudeCodeImport, claudeCodeImport.importSessions(input), {
+            "rpc.aggregate": "claudeCode",
+          }),
         [WS_METHODS.serverGetTraceDiagnostics]: (_input) =>
           observeRpcEffect(
             WS_METHODS.serverGetTraceDiagnostics,
