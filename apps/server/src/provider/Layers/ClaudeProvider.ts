@@ -48,6 +48,7 @@ const CLAUDE_PRESENTATION = {
   displayName: "Claude",
   showInteractionModeToggle: true,
 } as const;
+const MINIMUM_CLAUDE_SONNET_5_VERSION = "2.1.197";
 const MINIMUM_CLAUDE_FABLE_5_VERSION = "2.1.169";
 const MINIMUM_CLAUDE_OPUS_4_8_VERSION = "2.1.154";
 const MINIMUM_CLAUDE_OPUS_4_7_VERSION = "2.1.111";
@@ -208,6 +209,7 @@ const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
             { value: "high", label: "High", isDefault: true },
             { value: "xhigh", label: "Extra High" },
             { value: "max", label: "Max" },
+            { value: "ultracode", label: "Ultracode" },
             { value: "ultrathink", label: "Ultrathink" },
           ],
           promptInjectedValues: ["ultrathink"],
@@ -267,6 +269,10 @@ const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
   },
 ];
 
+function supportsClaudeSonnet5(version: string | null | undefined): boolean {
+  return version ? compareSemverVersions(version, MINIMUM_CLAUDE_SONNET_5_VERSION) >= 0 : false;
+}
+
 function supportsClaudeFable5(version: string | null | undefined): boolean {
   return version ? compareSemverVersions(version, MINIMUM_CLAUDE_FABLE_5_VERSION) >= 0 : false;
 }
@@ -283,6 +289,9 @@ function getBuiltInClaudeModelsForVersion(
   version: string | null | undefined,
 ): ReadonlyArray<ServerProviderModel> {
   return BUILT_IN_MODELS.filter((model) => {
+    if (model.slug === "claude-sonnet-5") {
+      return supportsClaudeSonnet5(version);
+    }
     if (model.slug === "claude-fable-5") {
       return supportsClaudeFable5(version);
     }
@@ -294,6 +303,11 @@ function getBuiltInClaudeModelsForVersion(
     }
     return true;
   });
+}
+
+function formatClaudeSonnet5UpgradeMessage(version: string | null): string {
+  const versionLabel = version ? `v${version}` : "the installed version";
+  return `Claude Code ${versionLabel} is too old for Claude Sonnet 5. Upgrade to v${MINIMUM_CLAUDE_SONNET_5_VERSION} or newer to access it.`;
 }
 
 function formatClaudeFable5UpgradeMessage(version: string | null): string {
@@ -761,13 +775,15 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     claudeSettings.customModels,
     DEFAULT_CLAUDE_MODEL_CAPABILITIES,
   );
-  const versionUpgradeMessage = supportsClaudeFable5(parsedVersion)
+  const versionUpgradeMessage = supportsClaudeSonnet5(parsedVersion)
     ? undefined
-    : supportsClaudeOpus48(parsedVersion)
-      ? formatClaudeFable5UpgradeMessage(parsedVersion)
-      : supportsClaudeOpus47(parsedVersion)
-        ? formatClaudeOpus48UpgradeMessage(parsedVersion)
-        : formatClaudeOpus47UpgradeMessage(parsedVersion);
+    : supportsClaudeFable5(parsedVersion)
+      ? formatClaudeSonnet5UpgradeMessage(parsedVersion)
+      : supportsClaudeOpus48(parsedVersion)
+        ? formatClaudeFable5UpgradeMessage(parsedVersion)
+        : supportsClaudeOpus47(parsedVersion)
+          ? formatClaudeOpus48UpgradeMessage(parsedVersion)
+          : formatClaudeOpus47UpgradeMessage(parsedVersion);
 
   const capabilities = resolveCapabilities
     ? yield* resolveCapabilities(claudeSettings).pipe(Effect.orElseSucceed(() => undefined))
