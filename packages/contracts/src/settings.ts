@@ -105,6 +105,17 @@ export type EnvironmentIdentificationMode = typeof EnvironmentIdentificationMode
 export const DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE: EnvironmentIdentificationMode = "artwork";
 
 /**
+ * Which sidebar stage artwork to render, independent of the build channel.
+ * "auto" keeps the upstream stage-driven behavior (Dev blueprint on dev builds,
+ * Nightly sky on nightly builds, none otherwise); the other values force a
+ * specific backdrop (or none) on any build so the artwork can be enjoyed
+ * outside the Dev/Nightly channels.
+ */
+export const SidebarStageArtwork = Schema.Literals(["auto", "nightly", "dev", "off"]);
+export type SidebarStageArtwork = typeof SidebarStageArtwork.Type;
+export const DEFAULT_SIDEBAR_STAGE_ARTWORK: SidebarStageArtwork = "auto";
+
+/**
  * A user-chosen font family (a single name or a comma-separated list). Empty
  * means "use the app default"; clients compose their own fallback stacks.
  */
@@ -120,6 +131,9 @@ export const ClientSettingsSchema = Schema.Struct({
   diffIgnoreWhitespace: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   environmentIdentificationMode: EnvironmentIdentificationMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE)),
+  ),
+  sidebarStageArtwork: SidebarStageArtwork.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_STAGE_ARTWORK)),
   ),
   glassOpacity: GlassOpacity.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_GLASS_OPACITY)),
@@ -759,6 +773,7 @@ export const ClientSettingsPatch = Schema.Struct({
   confirmThreadDelete: Schema.optionalKey(Schema.Boolean),
   diffIgnoreWhitespace: Schema.optionalKey(Schema.Boolean),
   environmentIdentificationMode: Schema.optionalKey(EnvironmentIdentificationMode),
+  sidebarStageArtwork: Schema.optionalKey(SidebarStageArtwork),
   glassOpacity: Schema.optionalKey(GlassOpacity),
   fontSizeInterface: Schema.optionalKey(InterfaceFontSize),
   fontSizePrompt: Schema.optionalKey(PromptFontSize),

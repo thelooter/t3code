@@ -14,14 +14,19 @@ import { getLocalStorageItem, removeLocalStorageItem } from "../hooks/useLocalSt
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
-import { useEnvironmentIdentificationMode, useLegacySidebarEnabled } from "../hooks/useSettings";
+import {
+  useEnvironmentIdentificationMode,
+  useLegacySidebarEnabled,
+  useSidebarStageArtwork,
+} from "../hooks/useSettings";
 import LegacyThreadSidebar from "./LegacySidebar";
 import ThreadSidebar from "./Sidebar";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
 import { SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import {
+  resolveSidebarArtworkVariant,
   resolveSidebarStageFocusRingOffsetClass,
-  useSidebarStageBackdropVariant,
+  useEnvironmentStageLabel,
 } from "./SidebarStageBackdrop";
 import { useProjects } from "../state/entities";
 import {
@@ -69,8 +74,11 @@ function SidebarControl() {
   const { toggleSidebar } = useSidebar();
   const isSidebarVisible = useSidebarVisibility();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
-  const stageBackdropVariant = useSidebarStageBackdropVariant(
-    environmentIdentificationMode === "artwork",
+  const sidebarStageArtwork = useSidebarStageArtwork();
+  const stageBackdropVariant = resolveSidebarArtworkVariant(
+    sidebarStageArtwork,
+    useEnvironmentStageLabel(),
+    environmentIdentificationMode,
   );
   const shortcutLabel = shortcutLabelForCommand(keybindings, "sidebar.toggle");
 

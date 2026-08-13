@@ -18,8 +18,10 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import {
   DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE,
+  DEFAULT_SIDEBAR_STAGE_ARTWORK,
   DEFAULT_UNIFIED_SETTINGS,
   type EnvironmentIdentificationMode,
+  type SidebarStageArtwork,
   MAX_CODE_FONT_SIZE,
   MAX_GLASS_OPACITY,
   MAX_INTERFACE_FONT_SIZE,
@@ -147,6 +149,13 @@ const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, s
   artwork: "Artwork",
   pill: "Version pill",
   none: "None",
+};
+
+const SIDEBAR_STAGE_ARTWORK_LABELS: Record<SidebarStageArtwork, string> = {
+  auto: "Auto (match build)",
+  nightly: "Nightly sky",
+  dev: "Dev blueprint",
+  off: "Off",
 };
 
 const TIMESTAMP_FORMAT_LABELS = {
@@ -1065,6 +1074,44 @@ export function AppearanceSettingsPanel() {
             }
           />
         ) : null}
+
+        <SettingsRow
+          {...searchableSetting("sidebar-artwork")}
+          description="Render the animated sidebar stage art on any build. Auto follows the build channel (Dev blueprint, Nightly sky)."
+          resetAction={
+            settings.sidebarStageArtwork !== DEFAULT_SIDEBAR_STAGE_ARTWORK ? (
+              <SettingResetButton
+                label="sidebar artwork"
+                onClick={() =>
+                  updateSettings({ sidebarStageArtwork: DEFAULT_SIDEBAR_STAGE_ARTWORK })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.sidebarStageArtwork}
+              onValueChange={(value) => {
+                if (value === "auto" || value === "nightly" || value === "dev" || value === "off") {
+                  updateSettings({ sidebarStageArtwork: value });
+                }
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-40" aria-label="Sidebar artwork">
+                <SelectValue>
+                  {SIDEBAR_STAGE_ARTWORK_LABELS[settings.sidebarStageArtwork]}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                {Object.entries(SIDEBAR_STAGE_ARTWORK_LABELS).map(([value, label]) => (
+                  <SelectItem hideIndicator key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          }
+        />
       </SettingsSection>
 
       <TypographySection />
