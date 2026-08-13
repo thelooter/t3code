@@ -39,6 +39,7 @@ const clientSettings: ClientSettings = {
   sidebarAutoSettleAfterDays: 3,
   sidebarAutoSettleOnMerge: true,
   sidebarProjectGroupingMode: "repository_path",
+  sidebarStageArtwork: "auto",
   sidebarProjectGroupingOverrides: {
     "environment-1:/tmp/project-a": "separate",
   },
