@@ -82,6 +82,7 @@ const runReconciliation = (input: {
     Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {
       readEvents: () => Stream.empty,
       dispatch: input.dispatch,
+      importEvents: () => Effect.die("unused"),
       streamDomainEvents: Stream.empty,
       latestSequence: Effect.succeed(0),
     }),
@@ -287,6 +288,7 @@ it.effect("does not fail startup when the live provider session inventory cannot
     Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {
       readEvents: () => Stream.empty,
       dispatch: () => Effect.die("unused"),
+      importEvents: () => Effect.die("unused"),
       streamDomainEvents: Stream.empty,
       latestSequence: Effect.succeed(0),
     }),
