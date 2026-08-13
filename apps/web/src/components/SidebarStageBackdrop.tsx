@@ -1,5 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useId } from "react";
+import type {
+  EnvironmentIdentificationMode,
+  SidebarStageArtwork,
+} from "@t3tools/contracts/settings";
 
 import { APP_STAGE_LABEL } from "../branding";
 import { resolveServerBackedAppStageLabel } from "../branding.logic";
@@ -21,6 +25,32 @@ export function resolveSidebarStageBackdropVariant(
   if (normalized === "nightly") return "nightly";
   if (normalized === "dev") return "dev";
   return null;
+}
+
+/**
+ * Resolves the sidebar backdrop art from the user's explicit `sidebarStageArtwork`
+ * choice. "auto" defers to the build's stage (gated by the artwork identification
+ * mode); the other values force a specific backdrop on any build so, e.g., the
+ * Nightly sky can be enjoyed on a stable or dev build.
+ */
+export function resolveSidebarArtworkVariant(
+  artwork: SidebarStageArtwork,
+  stageLabel: string,
+  environmentIdentificationMode: EnvironmentIdentificationMode,
+): SidebarStageBackdropVariant | null {
+  switch (artwork) {
+    case "off":
+      return null;
+    case "nightly":
+      return "nightly";
+    case "dev":
+      return "dev";
+    case "auto":
+      return resolveSidebarStageBackdropVariant(
+        stageLabel,
+        environmentIdentificationMode === "artwork",
+      );
+  }
 }
 
 export function resolveSidebarStageFocusRingOffsetClass(
