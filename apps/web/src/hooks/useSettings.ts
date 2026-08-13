@@ -22,6 +22,7 @@ import {
   type ClientSettings,
   DEFAULT_CLIENT_SETTINGS,
   type EnvironmentIdentificationMode,
+  type SidebarStageArtwork,
   type UnifiedSettings,
 } from "@t3tools/contracts/settings";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
@@ -272,6 +273,10 @@ export function useEnvironmentIdentificationMode(): EnvironmentIdentificationMod
     paletteThemeActive: previewSidebarArtwork !== null || activeThemeDefinition !== null,
     paletteThemeAllowsArtwork: previewSidebarArtwork ?? themeAllowsSidebarArtwork(activeTheme),
   });
+}
+
+export function useSidebarStageArtwork(): SidebarStageArtwork {
+  return useClientSettingsValue().sidebarStageArtwork;
 }
 
 /**

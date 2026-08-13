@@ -73,6 +73,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     targetId: "appearance",
   },
   {
+    id: "sidebar-artwork",
+    title: "Sidebar artwork",
+    to: "/settings/appearance",
+    targetId: "appearance",
+  },
+  {
     id: "interface-font",
     title: "Interface font",
     to: "/settings/appearance",
