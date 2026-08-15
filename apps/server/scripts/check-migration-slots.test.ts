@@ -6,6 +6,7 @@ import * as Path from "effect/Path";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { migrationManifest, runMigrations } from "../src/persistence/Migrations.ts";
+import { runForkMigrations } from "../src/persistence/ForkMigrations.ts";
 import * as NodeSqliteClient from "../src/persistence/NodeSqliteClient.ts";
 import { runCheckMigrationSlots } from "./check-migration-slots.ts";
 
@@ -21,11 +22,20 @@ const createMigratedDatabase = Effect.fn("createMigratedDatabase")(function* (ba
   const stateDir = path.join(baseDir, "userdata");
   const databasePath = path.join(stateDir, "state.sqlite");
   yield* fs.makeDirectory(stateDir, { recursive: true });
-  yield* withDatabase(databasePath, runMigrations());
+  yield* withDatabase(
+    databasePath,
+    Effect.gen(function* () {
+      yield* runMigrations();
+      yield* runForkMigrations();
+    }),
+  );
   return databasePath;
 });
 
-const highestSlot = migrationManifest.reduce((highest, [slot]) => Math.max(highest, slot), 0);
+const highestUpstreamSlot = migrationManifest.reduce(
+  (highest, [slot]) => Math.max(highest, slot),
+  0,
+);
 
 it.layer(NodeServices.layer)("check-migration-slots", (it) => {
   it.effect("reports no issues for a database migrated by this checkout", () =>
@@ -58,7 +68,13 @@ it.layer(NodeServices.layer)("check-migration-slots", (it) => {
       const result = yield* runCheckMigrationSlots({ database: databasePath });
 
       assert.deepStrictEqual(result.issues, [
-        { kind: "collision", slot, codeName, appliedName: "SomeOtherBranchMigration" },
+        {
+          kind: "collision",
+          namespace: "upstream",
+          slot,
+          codeName,
+          appliedName: "SomeOtherBranchMigration",
+        },
       ]);
     }),
   );
@@ -82,7 +98,67 @@ it.layer(NodeServices.layer)("check-migration-slots", (it) => {
       const result = yield* runCheckMigrationSlots({ database: databasePath });
 
       assert.deepStrictEqual(result.issues, [
-        { kind: "stranded", slot, codeName, highestAppliedSlot: highestSlot },
+        {
+          kind: "stranded",
+          namespace: "upstream",
+          slot,
+          codeName,
+          highestAppliedSlot: highestUpstreamSlot,
+        },
+      ]);
+    }),
+  );
+
+  it.effect("flags an applied id this checkout does not register", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "check-slots-orphan-" });
+      const databasePath = yield* createMigratedDatabase(dir);
+      // Exactly the row a pre-namespace fork build left behind at slot 41.
+      yield* withDatabase(
+        databasePath,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (41, 'ProjectionThreadsImportedSource')`;
+        }),
+      );
+
+      const result = yield* runCheckMigrationSlots({ database: databasePath });
+
+      assert.deepStrictEqual(result.issues, [
+        {
+          kind: "orphan",
+          namespace: "upstream",
+          slot: 41,
+          appliedName: "ProjectionThreadsImportedSource",
+        },
+      ]);
+    }),
+  );
+
+  it.effect("audits the fork namespace independently of upstream's", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "check-slots-fork-" });
+      const databasePath = yield* createMigratedDatabase(dir);
+      yield* withDatabase(
+        databasePath,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE fork_sql_migrations SET name = 'RenamedByAnotherForkBranch' WHERE migration_id = 1`;
+        }),
+      );
+
+      const result = yield* runCheckMigrationSlots({ database: databasePath });
+
+      assert.deepStrictEqual(result.issues, [
+        {
+          kind: "collision",
+          namespace: "fork",
+          slot: 1,
+          codeName: "ProjectionThreadsImportedSource",
+          appliedName: "RenamedByAnotherForkBranch",
+        },
       ]);
     }),
   );
@@ -93,7 +169,7 @@ it.layer(NodeServices.layer)("check-migration-slots", (it) => {
       const path = yield* Path.Path;
       const dir = yield* fs.makeTempDirectoryScoped({ prefix: "check-slots-fresh-" });
       const databasePath = path.join(dir, "state.sqlite");
-      // Touch a real but empty sqlite file: no bookkeeping table yet.
+      // Touch a real but empty sqlite file: no bookkeeping tables yet.
       yield* withDatabase(
         databasePath,
         Effect.gen(function* () {
