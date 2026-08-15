@@ -18,6 +18,7 @@ import {
   ResolvedKeybindingsConfig,
 } from "./keybindings.ts";
 import { EditorId, RemoteOpenTarget } from "./editor.ts";
+import { ForkSchemaColumnsRestoredIssue } from "./forkSchema.ts";
 import { ModelCapabilities } from "./model.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 import { ServerSettings } from "./settings.ts";
@@ -36,6 +37,7 @@ const KeybindingsInvalidEntryIssue = Schema.Struct({
 export const ServerConfigIssue = Schema.Union([
   KeybindingsMalformedConfigIssue,
   KeybindingsInvalidEntryIssue,
+  ForkSchemaColumnsRestoredIssue,
 ]);
 export type ServerConfigIssue = typeof ServerConfigIssue.Type;
 
