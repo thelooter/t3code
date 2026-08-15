@@ -25,6 +25,7 @@ import * as Migrator from "effect/unstable/sql/Migrator";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import ForkMigration0001 from "./ForkMigrations/001_ProjectionThreadsImportedSource.ts";
+import { recordForkSchemaRepair } from "./forkSchemaRepairs.ts";
 
 /** Deliberately not `effect_sql_migrations`; see the module comment. */
 export const FORK_MIGRATIONS_TABLE = "fork_sql_migrations";
@@ -101,5 +102,8 @@ export const assertForkSchema = Effect.fn("assertForkSchema")(function* () {
   for (const column of missing) {
     yield* sql.unsafe(`ALTER TABLE projection_threads ADD COLUMN ${column} TEXT`).unprepared;
   }
+  // A boot log is invisible when the app is launched from a desktop launcher,
+  // so hand this to the config surface for the UI to report as well.
+  recordForkSchemaRepair(missing);
   return missing;
 });

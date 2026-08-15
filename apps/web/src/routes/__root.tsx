@@ -15,6 +15,7 @@ import { resolveServerBackedAppDisplayName } from "../branding.logic";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { CommandPalette } from "../components/CommandPalette";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
+import { ForkSchemaRepairBanner } from "../components/ForkSchemaRepairBanner";
 import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDialog";
 import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
@@ -91,6 +92,7 @@ function RootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
+  const serverConfigIssues = useAtomValue(primaryServerConfigAtom)?.issues;
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -122,6 +124,7 @@ function RootRouteView() {
   const appShell = (
     <CommandPalette>
       <AppSidebarLayout>
+        <ForkSchemaRepairBanner issues={serverConfigIssues} />
         <Outlet />
       </AppSidebarLayout>
     </CommandPalette>
