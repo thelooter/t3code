@@ -2010,11 +2010,45 @@ function workToneIcon(tone: TimelineWorkEntry["tone"]): {
   };
 }
 
+/** "+12 −3", or null when the change is empty on both sides. */
+function fileChangeStatLabel(
+  fileChange: NonNullable<TimelineWorkEntry["fileChange"]>,
+): string | null {
+  const parts: string[] = [];
+  if (fileChange.additions > 0) parts.push(`+${fileChange.additions}`);
+  if (fileChange.deletions > 0) parts.push(`−${fileChange.deletions}`);
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
+/** Headline for a failed edit — the detail goes in the expanded body. */
+function fileChangeErrorHeadline(
+  fileChangeError: NonNullable<TimelineWorkEntry["fileChangeError"]>,
+): string {
+  switch (fileChangeError.kind) {
+    case "stale-read":
+      return "Blocked — file wasn't read first";
+    case "no-match":
+      return "Couldn't apply — target text not found";
+    default:
+      return "Edit failed";
+  }
+}
+
 function workEntryPreview(
-  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles">,
+  workEntry: Pick<
+    TimelineWorkEntry,
+    "detail" | "command" | "changedFiles" | "fileChange" | "fileChangeError"
+  >,
   workspaceRoot: string | undefined,
 ) {
   if (workEntry.command) return workEntry.command;
+  if (workEntry.fileChangeError) return fileChangeErrorHeadline(workEntry.fileChangeError);
+  // A file edit reads as "src/foo.ts +12 −3", never the serialized tool input.
+  if (workEntry.fileChange) {
+    const displayPath = formatWorkspaceRelativePath(workEntry.fileChange.filePath, workspaceRoot);
+    const stat = fileChangeStatLabel(workEntry.fileChange);
+    return stat ? `${displayPath} ${stat}` : displayPath;
+  }
   if (workEntry.detail) return workEntry.detail;
   if ((workEntry.changedFiles?.length ?? 0) === 0) return null;
   const [firstPath] = workEntry.changedFiles ?? [];
@@ -2049,10 +2083,23 @@ function buildToolCallExpandedBody(
   } else if (workEntry.command?.trim()) {
     blocks.push(workEntry.command.trim());
   }
-  if (workEntry.detail?.trim()) {
+  // A failed edit shows its reason; the serialized input that failed is only
+  // worth reading when the failure was a stale target, and the message already
+  // quotes it.
+  if (workEntry.fileChangeError) {
+    blocks.push(workEntry.fileChangeError.message);
+  }
+  // With a rendered diff present, the serialized tool input is noise — the
+  // diff already says what changed, in a form you can actually read.
+  else if (!workEntry.fileChange && workEntry.detail?.trim()) {
     blocks.push(workEntry.detail.trim());
   }
-  const changedFiles = workEntry.changedFiles ?? [];
+  if (workEntry.fileChange?.truncated) {
+    blocks.push(
+      `Diff too large to display (${workEntry.fileChange.additions} added, ${workEntry.fileChange.deletions} removed).`,
+    );
+  }
+  const changedFiles = workEntry.fileChange ? [] : (workEntry.changedFiles ?? []);
   if (changedFiles.length > 0) {
     blocks.push(
       changedFiles
@@ -2062,6 +2109,40 @@ function buildToolCallExpandedBody(
   }
   return blocks.length > 0 ? blocks.join("\n\n") : null;
 }
+
+/**
+ * Rendered diff for a file-edit work entry. Mounted only while the row is
+ * expanded, so neither the patch parse nor the TimelineRowCtx subscription is
+ * paid by the collapsed rows that make up almost every timeline.
+ */
+const WorkEntryFileDiff = memo(function WorkEntryFileDiff(props: { workEntry: TimelineWorkEntry }) {
+  const { workEntry } = props;
+  const ctx = use(TimelineRowCtx);
+  const patch = workEntry.fileChange?.patch ?? "";
+  const renderablePatch = getRenderablePatch(patch, `file-change:${workEntry.id}`);
+
+  if (renderablePatch?.kind === "raw") {
+    return <pre className={toolCallExpandedBodyClassName}>{renderablePatch.text}</pre>;
+  }
+  if (renderablePatch?.kind !== "files") {
+    return null;
+  }
+  return (
+    <>
+      {renderablePatch.files.map((fileDiff) => (
+        <FileDiff
+          key={resolveFileDiffPath(fileDiff)}
+          fileDiff={fileDiff}
+          options={{
+            collapsed: false,
+            diffStyle: "unified",
+            theme: resolveDiffThemeName(ctx.resolvedTheme),
+          }}
+        />
+      ))}
+    </>
+  );
+});
 
 const toolCallExpandedBodyClassName =
   "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-secondary-label text-[length:var(--font-size-code,0.6875rem)] leading-relaxed select-text";
@@ -2246,7 +2327,10 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
       : rawPreview;
   const displayText = preview ? `${heading} - ${preview}` : heading;
   const expandedBody = buildToolCallExpandedBody(workEntry, workspaceRoot);
-  const canExpand = expandedBody !== null;
+  // A file edit expands into a rendered diff rather than the raw tool input.
+  // Parsing happens in WorkEntryFileDiff, which only mounts once expanded.
+  const hasFileDiff = (workEntry.fileChange?.patch.length ?? 0) > 0;
+  const canExpand = expandedBody !== null || hasFileDiff;
   const showFailedIndicator = workEntryIndicatesToolFailure(workEntry);
   const showDestructiveRowStyle =
     showFailedIndicator &&
@@ -2370,13 +2454,16 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
           </div>
         </div>
       </div>
-      {expanded && canExpand && expandedBody ? (
+      {expanded && canExpand ? (
         <div
           className="mt-1 ms-7 cursor-default border-s border-border/45 ps-3 pt-0.5"
           onClick={stopRowToggle}
           onPointerDown={stopRowToggle}
         >
-          <pre className={toolCallExpandedBodyClassName}>{expandedBody}</pre>
+          {hasFileDiff ? <WorkEntryFileDiff workEntry={workEntry} /> : null}
+          {expandedBody ? (
+            <pre className={toolCallExpandedBodyClassName}>{expandedBody}</pre>
+          ) : null}
         </div>
       ) : null}
     </div>

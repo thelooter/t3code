@@ -721,6 +721,112 @@ describe("workEntryIndicatesToolFailure", () => {
   });
 });
 
+describe("deriveWorkLogEntries file changes", () => {
+  const patch = "--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1,1 +1,1 @@\n-old\n+new\n";
+
+  it("carries the synthesized diff onto the work entry", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "edit-ok",
+        kind: "tool.completed",
+        summary: "File change",
+        payload: {
+          itemType: "file_change",
+          detail: 'Edit: {"file_path":"/w/src/app.ts","old_string":"old"}',
+          data: {
+            toolName: "Edit",
+            fileChange: { filePath: "/w/src/app.ts", patch, additions: 1, deletions: 1 },
+          },
+        },
+      }),
+    ]);
+
+    expect(entries[0]?.fileChange).toEqual({
+      filePath: "/w/src/app.ts",
+      patch,
+      additions: 1,
+      deletions: 1,
+    });
+  });
+
+  it("keeps the stat line for a change too large to ship", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "edit-big",
+        kind: "tool.completed",
+        summary: "File change",
+        payload: {
+          itemType: "file_change",
+          data: {
+            fileChange: {
+              filePath: "/w/src/big.ts",
+              patch: "",
+              additions: 900,
+              deletions: 12,
+              truncated: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(entries[0]?.fileChange?.truncated).toBe(true);
+    expect(entries[0]?.fileChange?.additions).toBe(900);
+  });
+
+  it("ignores a malformed fileChange rather than rendering an empty diff", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "edit-bad",
+        kind: "tool.completed",
+        summary: "File change",
+        payload: { itemType: "file_change", data: { fileChange: { patch: "" } } },
+      }),
+    ]);
+
+    expect(entries[0]?.fileChange).toBeUndefined();
+  });
+
+  it("surfaces a failed edit's reason and kind", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "edit-failed",
+        kind: "tool.failed",
+        tone: "error",
+        summary: "File change",
+        payload: {
+          itemType: "file_change",
+          data: {
+            fileChangeError: { kind: "no-match", message: "String to replace not found in file." },
+          },
+        },
+      }),
+    ]);
+
+    expect(entries[0]?.fileChangeError).toEqual({
+      kind: "no-match",
+      message: "String to replace not found in file.",
+    });
+  });
+
+  it("falls back to the unknown kind for an unrecognized failure", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "edit-weird",
+        kind: "tool.failed",
+        tone: "error",
+        summary: "File change",
+        payload: {
+          itemType: "file_change",
+          data: { fileChangeError: { kind: "something-new", message: "Disk on fire" } },
+        },
+      }),
+    ]);
+
+    expect(entries[0]?.fileChangeError).toEqual({ kind: "unknown", message: "Disk on fire" });
+  });
+});
+
 describe("deriveWorkLogEntries", () => {
   it("omits tool started entries and keeps completed entries", () => {
     const activities: OrchestrationThreadActivity[] = [
