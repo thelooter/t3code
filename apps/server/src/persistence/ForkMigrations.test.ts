@@ -5,7 +5,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { SqlitePersistenceMemory } from "./Layers/Sqlite.ts";
 import { runMigrations } from "./Migrations.ts";
-import { assertForkSchema, runForkMigrations } from "./ForkMigrations.ts";
+import { assertForkSchema, forkMigrationManifest, runForkMigrations } from "./ForkMigrations.ts";
 import * as NodeSqliteClient from "./NodeSqliteClient.ts";
 
 const threadColumns = Effect.gen(function* () {
@@ -43,8 +43,12 @@ it.layer(NodeServices.layer)("ForkMigrations", (it) => {
         const [fork] = yield* sql<{ n: number }>`
           SELECT MAX(migration_id) AS n FROM fork_sql_migrations`;
 
-        assert.strictEqual(Number(fork?.n), 1);
-        assert.isAbove(Number(upstream?.n), 1);
+        // The point is that the two sequences are independent: the fork's
+        // tracks its own manifest and stays far below upstream's, however many
+        // migrations either side accumulates.
+        const forkHighWaterMark = Math.max(...forkMigrationManifest.map(([id]) => id));
+        assert.strictEqual(Number(fork?.n), forkHighWaterMark);
+        assert.isAbove(Number(upstream?.n), forkHighWaterMark);
       }),
     ),
   );
@@ -56,7 +60,7 @@ it.layer(NodeServices.layer)("ForkMigrations", (it) => {
         const first = yield* runForkMigrations();
         const second = yield* runForkMigrations();
 
-        assert.strictEqual(first.length, 1);
+        assert.strictEqual(first.length, forkMigrationManifest.length);
         assert.strictEqual(second.length, 0);
       }),
     ),
