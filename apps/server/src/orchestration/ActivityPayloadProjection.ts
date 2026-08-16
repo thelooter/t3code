@@ -385,6 +385,17 @@ export function projectActivityPayload(
     projectedData.kind = data.kind;
   }
 
+  // The synthesized file-edit diff. Unlike raw tool input this earns its wire
+  // cost: it is bounded by the size of the change (and capped by the adapter),
+  // and it is the whole point of the expanded file-change row.
+  if (asRecord(data.fileChange)) {
+    projectedData.fileChange = data.fileChange;
+  }
+  // Bounded by the adapter, and the only place a failed edit says why.
+  if (asRecord(data.fileChangeError)) {
+    projectedData.fileChangeError = data.fileChangeError;
+  }
+
   const rawOutput = projectRawOutput(data.rawOutput) ?? projectAcpContent(data.content);
   if (rawOutput) {
     projectedData.rawOutput = rawOutput;

@@ -95,6 +95,7 @@ import {
 } from "../Errors.ts";
 import { type ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
+import { buildFileChangePatch, classifyFileChangeError } from "./fileChangePatch.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
 const decodeUnknownJsonStringExit = Schema.decodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
 
@@ -2718,10 +2719,25 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const [index, tool] = toolEntry;
       const itemStatus = toolResult.isError ? "failed" : "completed";
       const toolUseResult = readClaudeToolUseResult(message);
+      // Edit/Write hand back a structuredPatch the clients can render as a real
+      // diff. Only file changes carry one; everything else falls through to the
+      // existing input/result presentation.
+      const fileChange =
+        tool.itemType === "file_change" && !toolResult.isError
+          ? buildFileChangePatch(toolUseResult, context.session.cwd)
+          : undefined;
+      // A failed edit's reason lives only in the result text, which the wire
+      // projection drops. Normalize it so the row can say why, not just that.
+      const fileChangeError =
+        tool.itemType === "file_change" && toolResult.isError
+          ? classifyFileChangeError(toolResult.text)
+          : undefined;
       const toolData = {
         toolName: tool.toolName,
         input: tool.input,
         result: toolResult.block,
+        ...(fileChange ? { fileChange } : {}),
+        ...(fileChangeError ? { fileChangeError } : {}),
       };
 
       const updatedStamp = yield* makeEventStamp();

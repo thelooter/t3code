@@ -190,6 +190,30 @@ describe("projectActivityPayload", () => {
     expect(JSON.stringify(projected.payload).length).toBeLessThan(500);
   });
 
+  it("keeps the synthesized file-edit diff on the wire", () => {
+    const fileChange = {
+      filePath: "/home/dev/project/src/app.ts",
+      patch: "--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1,1 +1,1 @@\n-old\n+new\n",
+      additions: 1,
+      deletions: 1,
+    };
+    const projected = projectActivityPayload(
+      activity({
+        itemType: "file_change",
+        data: {
+          toolName: "Edit",
+          input: { file_path: "/home/dev/project/src/app.ts", old_string: "old" },
+          result: { content: "updated" },
+          fileChange,
+        },
+      }),
+    );
+    const data = (projected.payload as Record<string, unknown>).data as Record<string, unknown>;
+    expect(data.fileChange).toEqual(fileChange);
+    // The bulky raw input is still dropped — the diff replaces it, not joins it.
+    expect(data.input).toBeUndefined();
+  });
+
   it("discovers Claude's snake_case file_path as a changed file", () => {
     const projected = projectActivityPayload(
       activity({

@@ -75,6 +75,23 @@ export interface WorkLogEntry {
   tone: "thinking" | "tool" | "info" | "error";
   toolTitle?: string;
   toolData?: unknown;
+  /**
+   * Synthesized unified diff for a file edit, when the provider gave us one.
+   * `patch` is empty with `truncated` set when the change was too large to
+   * ship, in which case only the stat line is renderable.
+   */
+  fileChange?: {
+    filePath: string;
+    patch: string;
+    additions: number;
+    deletions: number;
+    truncated?: boolean;
+  };
+  /** Why a file edit failed, when the provider told us. */
+  fileChangeError?: {
+    kind: "stale-read" | "no-match" | "unknown";
+    message: string;
+  };
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
   /** From runtime item / task payload `status` when present (e.g. tool.updated). */
@@ -1015,6 +1032,14 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       entry.toolData = data.item;
     }
   }
+  const fileChange = extractFileChange(payload);
+  if (fileChange) {
+    entry.fileChange = fileChange;
+  }
+  const fileChangeError = extractFileChangeError(payload);
+  if (fileChangeError) {
+    entry.fileChangeError = fileChangeError;
+  }
   if (itemType) {
     entry.itemType = itemType;
   }
@@ -1228,6 +1253,10 @@ function mergeDerivedWorkLogEntries(
   const toolCallId = next.toolCallId ?? previous.toolCallId;
   const toolLifecycleStatus = next.toolLifecycleStatus ?? previous.toolLifecycleStatus;
   const toolData = next.toolData ?? previous.toolData;
+  // A completion carries the diff; an earlier in-flight row for the same call
+  // must not blank it out when the two fold together.
+  const fileChange = next.fileChange ?? previous.fileChange;
+  const fileChangeError = next.fileChangeError ?? previous.fileChangeError;
   return {
     ...previous,
     ...next,
@@ -1242,6 +1271,8 @@ function mergeDerivedWorkLogEntries(
     ...(toolCallId ? { toolCallId } : {}),
     ...(toolLifecycleStatus !== undefined ? { toolLifecycleStatus } : {}),
     ...(toolData !== undefined ? { toolData } : {}),
+    ...(fileChange ? { fileChange } : {}),
+    ...(fileChangeError ? { fileChangeError } : {}),
   };
 }
 
@@ -1804,6 +1835,49 @@ function extractChangedFiles(payload: Record<string, unknown> | null): string[] 
   const seen = new Set<string>();
   collectChangedFiles(asRecord(payload?.data), changedFiles, seen, 0);
   return changedFiles;
+}
+
+/**
+ * Reads the adapter's synthesized file-edit diff off an activity payload.
+ * Rows without one (other providers, older activities, oversized changes that
+ * were dropped upstream) simply keep the existing presentation.
+ */
+function extractFileChange(
+  payload: Record<string, unknown> | null,
+): WorkLogEntry["fileChange"] | undefined {
+  const fileChange = asRecord(asRecord(payload?.data)?.fileChange);
+  if (!fileChange) {
+    return undefined;
+  }
+  const filePath = asTrimmedString(fileChange.filePath);
+  if (!filePath) {
+    return undefined;
+  }
+  const patch = typeof fileChange.patch === "string" ? fileChange.patch : "";
+  const additions = typeof fileChange.additions === "number" ? fileChange.additions : 0;
+  const deletions = typeof fileChange.deletions === "number" ? fileChange.deletions : 0;
+  if (patch.length === 0 && fileChange.truncated !== true) {
+    return undefined;
+  }
+  return {
+    filePath,
+    patch,
+    additions,
+    deletions,
+    ...(fileChange.truncated === true ? { truncated: true } : {}),
+  };
+}
+
+function extractFileChangeError(
+  payload: Record<string, unknown> | null,
+): WorkLogEntry["fileChangeError"] | undefined {
+  const error = asRecord(asRecord(payload?.data)?.fileChangeError);
+  const message = asTrimmedString(error?.message);
+  if (!message) {
+    return undefined;
+  }
+  const kind = error?.kind === "stale-read" || error?.kind === "no-match" ? error.kind : "unknown";
+  return { kind, message };
 }
 
 function compareActivitiesByOrder(

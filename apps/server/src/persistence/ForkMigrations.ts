@@ -25,6 +25,7 @@ import * as Migrator from "effect/unstable/sql/Migrator";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import ForkMigration0001 from "./ForkMigrations/001_ProjectionThreadsImportedSource.ts";
+import ForkMigration0002 from "./ForkMigrations/002_BackfillClaudeFileChangePatches.ts";
 import { recordForkSchemaRepair } from "./forkSchemaRepairs.ts";
 
 /** Deliberately not `effect_sql_migrations`; see the module comment. */
@@ -32,6 +33,7 @@ export const FORK_MIGRATIONS_TABLE = "fork_sql_migrations";
 
 export const forkMigrationEntries = [
   [1, "ProjectionThreadsImportedSource", ForkMigration0001],
+  [2, "BackfillClaudeFileChangePatches", ForkMigration0002],
 ] as const;
 
 export const forkMigrationManifest = forkMigrationEntries.map(([id, name]) => [id, name] as const);
