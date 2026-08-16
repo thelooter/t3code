@@ -190,6 +190,20 @@ describe("projectActivityPayload", () => {
     expect(JSON.stringify(projected.payload).length).toBeLessThan(500);
   });
 
+  it("discovers Claude's snake_case file_path as a changed file", () => {
+    const projected = projectActivityPayload(
+      activity({
+        itemType: "file_change",
+        data: {
+          toolName: "Edit",
+          input: { file_path: "/home/dev/project/src/app.ts", old_string: "old" },
+        },
+      }),
+    );
+    const data = (projected.payload as Record<string, unknown>).data as Record<string, unknown>;
+    expect(data.files).toEqual([{ path: "/home/dev/project/src/app.ts" }]);
+  });
+
   it("passes task lifecycle payloads (no data field) through untouched", () => {
     const source = activity({
       taskId: "task-9",
