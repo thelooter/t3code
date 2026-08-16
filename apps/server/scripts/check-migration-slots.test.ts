@@ -114,12 +114,15 @@ it.layer(NodeServices.layer)("check-migration-slots", (it) => {
       const fs = yield* FileSystem.FileSystem;
       const dir = yield* fs.makeTempDirectoryScoped({ prefix: "check-slots-orphan-" });
       const databasePath = yield* createMigratedDatabase(dir);
-      // Exactly the row a pre-namespace fork build left behind at slot 41.
+      // The row a pre-namespace fork build left behind, at an id upstream has
+      // not allocated yet. Below the manifest's high-water mark the same row
+      // reads as a collision instead, which the collision case already covers.
+      const orphanSlot = highestUpstreamSlot + 1;
       yield* withDatabase(
         databasePath,
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
-          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (41, 'ProjectionThreadsImportedSource')`;
+          yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (${orphanSlot}, 'ProjectionThreadsImportedSource')`;
         }),
       );
 
@@ -129,7 +132,7 @@ it.layer(NodeServices.layer)("check-migration-slots", (it) => {
         {
           kind: "orphan",
           namespace: "upstream",
-          slot: 41,
+          slot: orphanSlot,
           appliedName: "ProjectionThreadsImportedSource",
         },
       ]);
