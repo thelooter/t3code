@@ -26,6 +26,12 @@ permissions:
   contents: read
   id-token: none
 
+# Fork releases track this branch, not the default branch. `main` here mirrors
+# upstream, so scheduled runs off the default branch would build pingdotgg's
+# code and ignore everything in the fork.
+env:
+  RELEASE_BRANCH: thelooter/main
+
 jobs:
   check_changes:
     name: Check for changes since last nightly
@@ -37,6 +43,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ env.RELEASE_BRANCH }}
           fetch-depth: 0
           sparse-checkout: |
             /*
@@ -44,8 +51,10 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - id: check
-        name: Compare HEAD to last nightly tag
+        name: Compare release branch to last nightly tag
         run: |
+          set -euo pipefail
+
           last_nightly_tag=$(git tag --list 'v*-nightly.*' 'nightly-v*' --sort=-creatordate | head -n 1)
           if [[ -z "$last_nightly_tag" ]]; then
             echo "No previous nightly tag found. Proceeding with release."
@@ -57,10 +66,10 @@ jobs:
           head_sha=$(git rev-parse HEAD)
 
           if [[ "$last_nightly_sha" == "$head_sha" ]]; then
-            echo "No changes on main since last nightly release ($last_nightly_tag). Skipping."
+            echo "No changes on $RELEASE_BRANCH since last nightly release ($last_nightly_tag). Skipping."
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Changes detected on main since $last_nightly_tag ($last_nightly_sha → $head_sha). Proceeding."
+            echo "Changes detected on $RELEASE_BRANCH since $last_nightly_tag ($last_nightly_sha → $head_sha). Proceeding."
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -82,16 +91,41 @@ jobs:
       cli_dist_tag: ${{ steps.release_meta.outputs.cli_dist_tag }}
       is_prerelease: ${{ steps.release_meta.outputs.is_prerelease }}
       make_latest: ${{ steps.release_meta.outputs.make_latest }}
-      ref: ${{ github.sha }}
+      ref: ${{ steps.resolved_ref.outputs.sha }}
     steps:
+      # A tag push already names the commit to release. Everything else
+      # (schedule, workflow_dispatch) releases the fork's branch rather than
+      # whatever the default branch happens to point at.
+      - id: target_ref
+        name: Resolve target ref
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=$RELEASE_BRANCH" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ steps.target_ref.outputs.ref }}
           fetch-depth: 0
           sparse-checkout: |
             /*
             !/.repos/
           sparse-checkout-cone-mode: false
+
+      # Pin downstream jobs to a concrete commit. They check this out minutes to
+      # hours later, and a branch name would let a push mid-run split the
+      # release across two trees.
+      - id: resolved_ref
+        name: Pin resolved commit
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          echo "Releasing ${{ steps.target_ref.outputs.ref }} at $sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
@@ -110,7 +144,7 @@ jobs:
           DISPATCH_CHANNEL: ${{ github.event.inputs.channel }}
           DISPATCH_VERSION: ${{ github.event.inputs.version }}
           NIGHTLY_DATE: ${{ github.run_started_at }}
-          NIGHTLY_SHA: ${{ github.sha }}
+          NIGHTLY_SHA: ${{ steps.resolved_ref.outputs.sha }}
           NIGHTLY_RUN_NUMBER: ${{ github.run_number }}
         run: |
           if [[ "${GITHUB_EVENT_NAME}" == "schedule" || ( "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${DISPATCH_CHANNEL:-stable}" == "nightly" ) ]]; then
@@ -180,49 +214,34 @@ jobs:
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    environment:
-      name: production
     outputs:
       clerk_publishable_key: ${{ steps.public_config.outputs.clerk_publishable_key }}
       clerk_jwt_template: ${{ steps.public_config.outputs.clerk_jwt_template }}
       clerk_cli_oauth_client_id: ${{ steps.public_config.outputs.clerk_cli_oauth_client_id }}
       relay_url: ${{ steps.public_config.outputs.relay_url }}
     env:
-      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       RELAY_DOMAIN: ${{ vars.RELAY_DOMAIN }}
       RELAY_API_ZONE_NAME: ${{ vars.RELAY_API_ZONE_NAME }}
       CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
       CLERK_JWT_TEMPLATE: ${{ vars.CLERK_JWT_TEMPLATE }}
       CLERK_CLI_OAUTH_CLIENT_ID: ${{ vars.CLERK_CLI_OAUTH_CLIENT_ID }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.preflight.outputs.ref }}
-          sparse-checkout: |
-            /*
-            !/.repos/
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: true
-          run-install: |
-            args:
-              - --filter=t3code-relay...
-
-      - id: relay_state
-        name: Read production relay tracing config
+      # Upstream reads relay tracing config out of the production relay's
+      # Alchemy state, which needs Cloudflare credentials for an account this
+      # fork does not have. The values are Axiom OTLP telemetry only — nothing
+      # T3 Connect needs — so the fork blanks them instead. Written as explicit
+      # empty assignments rather than an empty file: downstream jobs `cat` this
+      # into $GITHUB_ENV, and the upload sets if-no-files-found:error, so a
+      # real file with valid (if empty) lines keeps both halves happy.
+      - name: Write blank relay client tracing config
         shell: bash
         run: |
-          vp run --filter t3code-relay deploy \
-            --stage prod \
-            --read-state \
-            --github-output \
-            --github-env-file "$RUNNER_TEMP/relay-client-tracing.env"
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/relay-client-tracing.env" <<'EOF'
+          T3CODE_RELAY_CLIENT_OTLP_TRACES_URL=
+          T3CODE_RELAY_CLIENT_OTLP_TRACES_DATASET=
+          T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN=
+          EOF
 
       - name: Upload relay client tracing config
         uses: actions/upload-artifact@v7
@@ -665,7 +684,8 @@ jobs:
   publish_cli:
     name: Publish CLI to npm
     needs: [preflight, relay_public_config, build]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.build.result == 'success' }}
+    # npm publish targets the real `t3` package, which only upstream may push.
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.build.result == 'success' && github.repository == 'pingdotgg/t3code' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -744,7 +764,9 @@ jobs:
   release:
     name: Publish GitHub Release
     needs: [preflight, build, publish_cli]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build.result == 'success' && needs.publish_cli.result == 'success' }}
+    # publish_cli is skipped on forks, which must not block the GitHub Release —
+    # the desktop artifacts are the whole point of a fork build.
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build.result == 'success' && (needs.publish_cli.result == 'success' || needs.publish_cli.result == 'skipped') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -870,7 +892,8 @@ jobs:
   deploy_web:
     name: Deploy hosted web app
     needs: [preflight, relay_public_config, release]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.release.result == 'success' }}
+    # Vercel deploy targets upstream's hosted app.t3.codes project.
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.release.result == 'success' && github.repository == 'pingdotgg/t3code' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -988,7 +1011,8 @@ jobs:
 
   finalize:
     name: Finalize release
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel == 'stable' }}
+    # Pushes a version-bump commit via upstream's release GitHub App.
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel == 'stable' && github.repository == 'pingdotgg/t3code' }}
     needs: [preflight, release]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -1073,7 +1097,8 @@ jobs:
       needs.relay_public_config.result == 'success' &&
       needs.release.result == 'success' &&
       needs.deploy_web.result == 'success' &&
-      (needs.finalize.result == 'success' || needs.finalize.result == 'skipped')
+      (needs.finalize.result == 'success' || needs.finalize.result == 'skipped') &&
+      github.repository == 'pingdotgg/t3code'
     needs: [preflight, relay_public_config, release, deploy_web, finalize]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
