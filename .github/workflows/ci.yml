@@ -4,7 +4,11 @@ on:
   pull_request:
   push:
     branches:
+      # `main` mirrors upstream; thelooter/main is where this fork's work lands,
+      # so it needs CI too. Trigger branch lists take no expressions, hence the
+      # literal rather than release.yml's RELEASE_BRANCH.
       - main
+      - thelooter/main
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.sha }}
