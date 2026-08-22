@@ -110,9 +110,9 @@ export default defineConfig({
             },
             {
               name: "@pierre/diffs/react",
-              importNames: ["CodeView"],
+              importNames: ["CodeView", "FileDiff"],
               message:
-                "Use StyledDiffCodeView so web diff surfaces share styling and virtualized geometry.",
+                "Use StyledDiffCodeView or StyledFileDiff so web diff surfaces share styling, theming, and virtualized geometry.",
             },
           ],
         },
