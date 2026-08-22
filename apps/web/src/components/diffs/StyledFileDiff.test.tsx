@@ -6,6 +6,7 @@ import type { FileDiffMetadata } from "@pierre/diffs/types";
 const testState = vi.hoisted(() => ({
   fileDiffClassName: null as string | null,
   fileDiffOptions: null as Record<string, unknown> | null,
+  requestedLanguages: [] as string[],
 }));
 
 vi.mock("@pierre/diffs/react", () => ({
@@ -13,6 +14,13 @@ vi.mock("@pierre/diffs/react", () => ({
     testState.fileDiffClassName = props.className;
     testState.fileDiffOptions = props.options;
     return null;
+  },
+}));
+
+vi.mock("~/lib/syntaxHighlighting", () => ({
+  getSyntaxHighlighterPromise: (language: string) => {
+    testState.requestedLanguages.push(language);
+    return Promise.resolve({});
   },
 }));
 
@@ -24,6 +32,7 @@ describe("StyledFileDiff", () => {
   beforeEach(() => {
     testState.fileDiffClassName = null;
     testState.fileDiffOptions = null;
+    testState.requestedLanguages = [];
   });
 
   it("hands Pierre the app's themed stylesheet instead of its bundled colors", () => {
@@ -54,5 +63,19 @@ describe("StyledFileDiff", () => {
     );
 
     expect(testState.fileDiffClassName).toBe("styled-file-diff mt-1");
+  });
+
+  // Pierre tokenizes once on mount, so the grammar has to be requested for the
+  // file's own language rather than inherited from whatever the thread happened
+  // to load first.
+  it.each([
+    ["b/src/app.ts", "typescript"],
+    ["b/src/app.tsx", "tsx"],
+    ["b/scripts/run.py", "python"],
+    ["b/app/main.css", "css"],
+  ])("requests the grammar for %s", (name, expected) => {
+    renderToStaticMarkup(<StyledFileDiff fileDiff={fileDiffFor(name)} />);
+
+    expect(testState.requestedLanguages).toContain(expected);
   });
 });
