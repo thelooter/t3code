@@ -11,7 +11,12 @@ import type { Ref } from "react";
 
 import { DIFF_SURFACE_THEME_UNSAFE_CSS } from "~/lib/diffRendering";
 
-const DIFF_VIEW_UNSAFE_CSS = `${DIFF_SURFACE_THEME_UNSAFE_CSS}
+/**
+ * The app's diff chrome on top of the themed surface: header, hunk separators,
+ * and selection cues. Shared with {@link StyledFileDiff} so a diff embedded in
+ * chat reads the same as one in the diff panel.
+ */
+export const DIFF_VIEW_UNSAFE_CSS = `${DIFF_SURFACE_THEME_UNSAFE_CSS}
 :is(
   [data-line],
   [data-line-annotation],

@@ -2289,6 +2289,23 @@ code {
   color: var(--code-foreground);
 }
 
+/* An inline file diff keeps a framed card, unlike the panel surfaces that own
+   their whole viewport, but sits on the same themeable code surface. Pierre
+   styles this host element, so the tokens have to be set outside its shadow
+   root alongside the unsafeCSS StyledFileDiff passes in. Unlike CodeView, the
+   React FileDiff puts className on the container itself rather than a wrapper,
+   so this selector is the element, not a descendant. */
+diffs-container.styled-file-diff {
+  overflow: clip;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  --diffs-bg: var(--code-background) !important;
+  --diffs-light-bg: var(--code-background) !important;
+  --diffs-dark-bg: var(--code-background) !important;
+  background-color: var(--code-background) !important;
+  color: var(--code-foreground) !important;
+}
+
 /* Pierre's file renderer owns its own surface tokens. Keep the root of a file
    preview on the same themeable code surface as the diff panel. */
 .diff-render-surface diffs-container,
